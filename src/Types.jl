@@ -221,6 +221,8 @@ end
 
 mutable struct PlotPanel
     axes::Vector{Axis}
+    ui_items::Vector{Any}
+    # Makie controls in the plot layout (the spatial profile selector).
     domain_length_scale::Float64
     perturbation_controls::Vector{Any}
 

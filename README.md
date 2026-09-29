@@ -88,8 +88,8 @@ RDModel(
 Create `Models/<Family>/<my_model>/model.jl` and restart the application; the
 model appears in the model menu. Spatial profiles (e.g. a source density
 `ρ(x)`) can be declared with `spatial_profiles`; see the existing models.
-When a model declares several profile sets, the active one is chosen in the
-*Spatial profile* section of the model drawer.
+When a model declares several profile sets, the active one is chosen with
+the Previous / Next buttons under the profile plots.
 
 ## Installation
 

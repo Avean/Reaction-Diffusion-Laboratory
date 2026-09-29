@@ -81,8 +81,6 @@ mutable struct QMLBindings
     equation_values_visible::Observable{Bool}
     domain_resolution::Observable{Int}
     main_window_visible::Observable{Bool}
-    spatial_profile_sets_json::Observable{String}
-    spatial_profile_set_index::Observable{Int}
 end
 
 
@@ -245,19 +243,6 @@ function model_parameters_json(model::RD.ModelSpec, params::AbstractDict{Symbol}
         )
     end
     return "[" * join(entries, ",") * "]"
-end
-
-
-function spatial_profile_sets_json(model::RD.ModelSpec)
-    return json_string_array(first.(model.spatial_profile_sets))
-end
-
-
-function active_spatial_profile_set_index(sim::RD.SimulationState)
-    profile_sets = sim.model.spatial_profile_sets
-    isempty(profile_sets) && return 0
-
-    return RD._active_spatial_profile_set_index(sim.params, profile_sets)
 end
 
 
@@ -855,11 +840,6 @@ function update_model_bindings!(controller::QMLController)
         model_parameters_json(model, controller.app.sim.params),
     )
     set_if_changed!(bindings.variables_json, json_string_array(model.varnames))
-    set_if_changed!(bindings.spatial_profile_sets_json, spatial_profile_sets_json(model))
-    set_if_changed!(
-        bindings.spatial_profile_set_index,
-        active_spatial_profile_set_index(controller.app.sim),
-    )
     set_if_changed!(
         bindings.equation_images_json,
         json_string_array(get(controller.equation_images_by_model, active_key, String[])),
@@ -923,10 +903,6 @@ function refresh_qml_state!(controller::QMLController)
     set_if_changed!(
         controller.bindings.checkpoint_available,
         controller.app.saved_state[] !== nothing,
-    )
-    set_if_changed!(
-        controller.bindings.spatial_profile_set_index,
-        active_spatial_profile_set_index(controller.app.sim),
     )
     update_partition_bindings!(controller)
 
@@ -1703,19 +1679,6 @@ function add_series_perturbation!(controller::QMLController)
 end
 
 
-function select_series_perturbation!(controller::QMLController, id_value)
-    series = controller.series
-    series.running[] && return nothing
-    perturbation = series_perturbation_by_id(series, Int(id_value))
-    perturbation === nothing && return nothing
-    series.selected_perturbation_id = perturbation.id
-    update_series_editor_selection!(controller)
-    update_series_position_marker!(controller)
-    refresh_series_bindings!(controller)
-    return nothing
-end
-
-
 function delete_series_perturbation!(controller::QMLController, id_value)
     series = controller.series
     series.running[] && return nothing
@@ -2486,6 +2449,13 @@ function select_model!(controller::QMLController, key)
 end
 
 
+function hard_reset!(controller::QMLController)
+    # Reload the active model as if it were chosen again: default parameters
+    # and profile set, one panel, no checkpoint and no series perturbations.
+    return select_model!(controller, controller.bindings.active_model_key[])
+end
+
+
 function select_boundary_condition!(controller::QMLController, label)
     label_string = String(label)
 
@@ -2585,21 +2555,6 @@ function set_model_parameter_from_qml!(controller::QMLController, name, value_te
         clear_series_results!(controller)
         update_model_bindings!(controller)
         refresh_current_equation_image!(controller)
-    end
-end
-
-
-function select_spatial_profile_set!(controller::QMLController, one_based_index)
-    return guarded_action(controller, "Spatial profile change failed") do
-        controller.series.running[] && error("Stop the Series run before changing the spatial profile.")
-        RD.set_active_spatial_profile_set_app!(
-            controller.app,
-            Int(one_based_index);
-            steps_per_frame = controller.steps_per_frame,
-            worker_sleep_time = controller.worker_sleep_time,
-        )
-        clear_series_results!(controller)
-        update_model_bindings!(controller)
     end
 end
 
@@ -2941,6 +2896,13 @@ function register_qml_functions!(controller::QMLController)
         ),
     )
     QML.qmlfunction(
+        "hardReset",
+        () -> enqueue_graphics_action!(
+            controller,
+            () -> hard_reset!(controller),
+        ),
+    )
+    QML.qmlfunction(
         "selectModel",
         key -> begin
             key_string = String(key)
@@ -2972,16 +2934,6 @@ function register_qml_functions!(controller::QMLController)
     QML.qmlfunction(
         "setModelParameter",
         (name, value) -> set_model_parameter_from_qml!(controller, name, value),
-    )
-    QML.qmlfunction(
-        "selectSpatialProfileSet",
-        index -> begin
-            one_based_index = Int(index)
-            enqueue_graphics_action!(
-                controller,
-                () -> select_spatial_profile_set!(controller, one_based_index),
-            )
-        end,
     )
     QML.qmlfunction(
         "setEquationValuesVisible",
@@ -3063,10 +3015,6 @@ function register_qml_functions!(controller::QMLController)
     QML.qmlfunction(
         "addSeriesPerturbation",
         guarded(() -> add_series_perturbation!(controller), "Adding a perturbation failed"),
-    )
-    QML.qmlfunction(
-        "selectSeriesPerturbation",
-        guarded(value -> select_series_perturbation!(controller, value), "Perturbation selection failed"),
     )
     QML.qmlfunction(
         "deleteSeriesPerturbation",
@@ -3161,8 +3109,6 @@ function qml_property_map(
         "equationValuesVisible" => bindings.equation_values_visible,
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
-        "spatialProfileSetsJson" => bindings.spatial_profile_sets_json,
-        "spatialProfileSetIndex" => bindings.spatial_profile_set_index,
         "modelCatalogJson" => Observable(catalog_json),
         "message" => bindings.message,
         "graphicsBusy" => controller.graphics_busy,
@@ -3339,8 +3285,6 @@ function create_qml_controller(;
         Observable(false),
         Observable(16),
         Observable(false),
-        Observable(spatial_profile_sets_json(first_model)),
-        Observable(active_spatial_profile_set_index(simulation)),
     )
     controller = QMLController(
         app,

@@ -1,6 +1,6 @@
 import QtQuick
 
-// The shared panel selector: one pill per domain panel, the current one
+// The shared panel selector: one tile per domain panel, the current one
 // highlighted. Optional badges (for example perturbation counts) are shown
 // next to the panel name when they are positive.
 Flow {
@@ -8,6 +8,7 @@ Flow {
 
     property int count: 0
     property int current: 1
+    property bool dark: true
     property var badges: []
     signal activated(int panel)
 
@@ -16,10 +17,12 @@ Flow {
     Repeater {
         model: selector.count
 
-        PillButton {
+        TileButton {
             required property int index
             readonly property int badge: index < selector.badges.length ? selector.badges[index] : 0
-            text: "Panel " + (index + 1) + (badge > 0 ? "  ·  " + badge : "")
+            dark: selector.dark
+            text: "Panel " + (index + 1)
+            detail: badge > 0 ? "· " + badge : ""
             checked: selector.current === index + 1
             onClicked: selector.activated(index + 1)
         }

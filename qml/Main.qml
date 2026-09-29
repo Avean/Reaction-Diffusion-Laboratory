@@ -27,7 +27,6 @@ ApplicationWindow {
     property var variables: JSON.parse(ui.variablesJson)
     property var equationImages: JSON.parse(ui.equationImagesJson)
     property string modelParametersJson: ui.modelParametersJson
-    property var spatialProfileSets: JSON.parse(ui.spatialProfileSetsJson)
     property bool textEditorFocused: false
     property int selectedFamilyIndex: 0
     property int activeFamilyIndex: findFamilyIndex(ui.activeModelKey)
@@ -174,21 +173,18 @@ ApplicationWindow {
             anchors.rightMargin: 8
             spacing: 6
 
-            ToolButton {
+            TileButton {
                 text: "Models: " + ui.modelName
-                Layout.maximumWidth: Math.min(390, window.width * 0.30)
+                checked: modelDrawer.opened
                 enabled: window.controlsEnabled
-                opacity: enabled ? 1.0 : 0.45
-                palette.buttonText: "white"
                 onClicked: modelDrawer.opened ? modelDrawer.close() : window.openModelDrawer()
             }
 
-            ToolButton {
+            TileButton {
                 id: stateButton
                 text: ui.checkpointAvailable ? "State  •" : "State"
+                checked: stateMenu.opened
                 enabled: window.controlsEnabled
-                opacity: enabled ? 1.0 : 0.45
-                palette.buttonText: "white"
                 onClicked: stateMenu.open()
 
                 Menu {
@@ -209,40 +205,24 @@ ApplicationWindow {
                 }
             }
 
-            // Two-state series toggle. A plain rectangle, like the Running
-            // indicator, because the native style ignores custom backgrounds.
-            Rectangle {
+            // Both states have the width of the longer label.
+            TextMetrics {
+                id: seriesLabelMetrics
+                font.bold: true
+                text: "Series mode: ON"
+            }
+
+            TileButton {
                 id: seriesButton
-                property bool available: ui.seriesMode || !ui.graphicsBusy
-                Layout.preferredWidth: seriesButtonText.implicitWidth + 28
-                Layout.preferredHeight: 34
-                radius: 5
-                color: ui.seriesMode
-                       ? (seriesMouse.containsMouse && !ui.seriesRunning ? "#1d4ed8" : "#2563eb")
-                       : seriesMouse.containsMouse ? "#3a4452" : "transparent"
-                border.color: ui.seriesMode ? "#93c5fd" : "#697586"
-                opacity: available ? 1.0 : 0.45
+                minimumTextWidth: seriesLabelMetrics.width
+                text: ui.seriesRunning
+                      ? "Series " + ui.seriesCompletedRuns + "/" + ui.seriesTotalRuns
+                      : ui.seriesMode ? "Series mode: ON" : "Series mode"
+                checked: ui.seriesMode
+                enabled: ui.seriesMode || !ui.graphicsBusy
+                onClicked: window.toggleSeriesMode()
 
-                Text {
-                    id: seriesButtonText
-                    anchors.centerIn: parent
-                    text: ui.seriesRunning
-                          ? "Series " + ui.seriesCompletedRuns + "/" + ui.seriesTotalRuns
-                          : ui.seriesMode ? "Series mode: ON" : "Series"
-                    color: "white"
-                    font.bold: ui.seriesMode
-                }
-
-                MouseArea {
-                    id: seriesMouse
-                    anchors.fill: parent
-                    enabled: seriesButton.available
-                    hoverEnabled: true
-                    cursorShape: ui.seriesRunning ? Qt.ForbiddenCursor : Qt.PointingHandCursor
-                    onClicked: window.toggleSeriesMode()
-                }
-
-                ToolTip.visible: seriesMouse.containsMouse && ui.seriesRunning
+                ToolTip.visible: hovered && ui.seriesRunning
                 ToolTip.text: "Stop the series to leave series mode"
             }
 
@@ -250,27 +230,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
-            Rectangle {
+            TileButton {
                 id: runningButton
                 Layout.preferredWidth: 92
-                Layout.preferredHeight: 34
-                radius: 5
-                color: ui.running ? "#26945b" : "#c63f45"
-                opacity: window.controlsEnabled ? 1.0 : 0.45
-
-                Text {
-                    anchors.centerIn: parent
-                    text: ui.running ? "Running" : "Stopped"
-                    color: "white"
-                    font.bold: true
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: window.controlsEnabled
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Julia.toggleRunning()
-                }
+                tone: ui.running ? "success" : "danger"
+                text: ui.running ? "Running" : "Stopped"
+                enabled: window.controlsEnabled
+                onClicked: Julia.toggleRunning()
             }
 
             Item {
@@ -291,34 +257,15 @@ ApplicationWindow {
                     { key: "4", exponent: 5, description: "Very fast: maximum dt = 1e5" }
                 ]
 
-                Rectangle {
-                    id: speedPreset
+                TileButton {
                     required property var modelData
                     Layout.preferredWidth: 30
-                    Layout.preferredHeight: 30
-                    property bool active: window.dtMatchesExponent(modelData.exponent)
-                    radius: 4
-                    color: active ? "#3b82f6" : "#46515f"
-                    border.color: active ? "#93c5fd" : "#697586"
-                    opacity: window.controlsEnabled ? 1.0 : 0.45
+                    text: modelData.key
+                    checked: window.dtMatchesExponent(modelData.exponent)
+                    enabled: window.controlsEnabled
+                    onClicked: Julia.setDtExponent(modelData.exponent)
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: speedPreset.modelData.key
-                        color: "white"
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        id: speedPresetMouse
-                        anchors.fill: parent
-                        enabled: window.controlsEnabled
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Julia.setDtExponent(speedPreset.modelData.exponent)
-                    }
-
-                    ToolTip.visible: speedPresetMouse.containsMouse
+                    ToolTip.visible: hovered
                     ToolTip.text: modelData.description + "  [" + modelData.key + "]"
                 }
             }
@@ -349,26 +296,13 @@ ApplicationWindow {
                 font.family: "Consolas"
             }
 
-            Rectangle {
-                Layout.preferredWidth: 68
-                Layout.preferredHeight: 34
-                radius: 5
-                color: "#596575"
-                opacity: window.controlsEnabled ? 1.0 : 0.45
+            TileButton {
+                text: ui.graphicsBusy ? "Wait..." : "Reset  [R]"
+                enabled: window.controlsEnabled
+                onClicked: Julia.resetSimulation()
 
-                Text {
-                    anchors.centerIn: parent
-                    text: ui.graphicsBusy ? "Wait..." : "Reset"
-                    color: "white"
-                    font.bold: true
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: window.controlsEnabled
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Julia.resetSimulation()
-                }
+                ToolTip.visible: hovered
+                ToolTip.text: "Restart from the initial condition, keeping parameters and panels"
             }
         }
     }
@@ -397,21 +331,17 @@ ApplicationWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
 
-                    ToolButton {
-                        Layout.alignment: Qt.AlignVCenter
+                    TileButton {
                         text: "Split / Merge"
+                        checked: bottomDrawer.opened && window.bottomPanel === "partition"
                         enabled: window.controlsEnabled
-                        opacity: enabled ? 1.0 : 0.45
-                        palette.buttonText: window.bottomPanel === "partition" ? "#93c5fd" : "white"
                         onClicked: window.toggleBottomPanel("partition")
                     }
 
-                    ToolButton {
-                        Layout.alignment: Qt.AlignVCenter
+                    TileButton {
                         text: "Perturbations"
+                        checked: bottomDrawer.opened && window.bottomPanel === "perturbations"
                         enabled: window.controlsEnabled
-                        opacity: enabled ? 1.0 : 0.45
-                        palette.buttonText: window.bottomPanel === "perturbations" ? "#93c5fd" : "white"
                         onClicked: window.toggleBottomPanel("perturbations")
                     }
                 }
@@ -434,23 +364,13 @@ ApplicationWindow {
                         { key: "3", resolution: 100 }
                     ]
 
-                    Rectangle {
+                    TileButton {
                         required property var modelData
-                        Layout.preferredWidth: 26
-                        Layout.preferredHeight: 26
-                        radius: 4
-                        property bool active: Number(ui.domainResolution) === modelData.resolution
-                        color: active ? "#3b82f6" : "#46515f"
-                        border.color: active ? "#93c5fd" : "#697586"
-
-                        Text { anchors.centerIn: parent; text: parent.modelData.key; color: "white"; font.bold: true }
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: window.controlsEnabled
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: Julia.setDomainResolution(parent.modelData.resolution)
-                        }
+                        Layout.preferredWidth: 30
+                        text: modelData.key
+                        checked: Number(ui.domainResolution) === modelData.resolution
+                        enabled: window.controlsEnabled
+                        onClicked: Julia.setDomainResolution(modelData.resolution)
                     }
                 }
 
@@ -491,13 +411,12 @@ ApplicationWindow {
                 Layout.preferredWidth: 1
                 Layout.minimumWidth: 230
 
-                ToolButton {
+                TileButton {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: controlDrawer.opened ? "Close steady state" : "Set steady state"
+                    text: "Set steady state"
+                    checked: controlDrawer.opened
                     enabled: window.controlsEnabled
-                    opacity: enabled ? 1.0 : 0.45
-                    palette.buttonText: "white"
                     onClicked: controlDrawer.opened ? controlDrawer.close() : window.openControlDrawer()
                 }
             }
@@ -512,10 +431,27 @@ ApplicationWindow {
 
     Popup {
         id: bottomDrawer
+        // Positioned in the window overlay, just above the bottom bar.
+        readonly property real bottomEdge: parent.height - bottomBar.height
+        parent: Overlay.overlay
         x: 0
-        y: parent.height - height
+        y: bottomEdge - height
+        // The slide-in animation replaces the y binding, so the drawer is
+        // re-anchored to the bottom bar whenever its size or the window
+        // changes (e.g. Split / Merge grows upwards after a split).
+        onHeightChanged: if (visible) y = bottomEdge - height
+        onBottomEdgeChanged: if (visible) y = bottomEdge - height
         width: parent.width
-        height: window.bottomPanel === "perturbations" ? 108 : 174
+        // Fits its content: Split / Merge grows once Merge and Swap appear.
+        // Row heights are fixed here rather than read from the layouts: a
+        // hidden page of the StackLayout is not laid out, so its implicit
+        // height is stale until it is shown.
+        readonly property int rowHeight: 42
+        height: Theme.headerHeight + 2 + 20 + (
+            window.bottomPanel === "partition"
+            ? (ui.segmentCount > 1 ? 2 * rowHeight + 8 : rowHeight)
+            : Theme.cardHeight
+        )
         modal: true
         dim: false
         focus: true
@@ -525,8 +461,8 @@ ApplicationWindow {
         enter: Transition {
             NumberAnimation {
                 property: "y"
-                from: bottomDrawer.parent.height
-                to: bottomDrawer.parent.height - bottomDrawer.height
+                from: bottomDrawer.bottomEdge
+                to: bottomDrawer.bottomEdge - bottomDrawer.height
                 duration: 180
                 easing.type: Easing.OutCubic
             }
@@ -535,8 +471,8 @@ ApplicationWindow {
         exit: Transition {
             NumberAnimation {
                 property: "y"
-                from: bottomDrawer.parent.height - bottomDrawer.height
-                to: bottomDrawer.parent.height
+                from: bottomDrawer.bottomEdge - bottomDrawer.height
+                to: bottomDrawer.bottomEdge
                 duration: 150
                 easing.type: Easing.InCubic
             }
@@ -550,99 +486,116 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            color: "#f3f5f8"
-            border.color: "#929ca9"
+            color: Theme.panel
+            border.color: Theme.panelBorder
             border.width: 1
         }
 
-        Behavior on height {
-            NumberAnimation {
-                duration: 180
-                easing.type: Easing.OutCubic
-            }
-        }
-
         contentItem: StackLayout {
-            anchors.fill: parent
             currentIndex: window.bottomPanel === "partition" ? 1 : 0
 
-            Item {
+            ColumnLayout {
+                spacing: 0
+
+                // The drawer is modal, which blocks the window shortcuts, so
+                // it repeats the ones that belong to it.
+                Shortcut {
+                    sequence: "Z"
+                    enabled: bottomDrawer.opened && !window.textEditorFocused && window.controlsEnabled
+                    autoRepeat: false
+                    onActivated: Julia.toggleRandomMode()
+                }
+
+                Shortcut {
+                    sequence: "X"
+                    enabled: bottomDrawer.opened && !window.textEditorFocused && window.controlsEnabled
+                    autoRepeat: false
+                    onActivated: Julia.toggleAbsoluteMode()
+                }
+
+                DrawerHeader {
+                    title: "Perturbations"
+                    onCloseRequested: window.closeBottomPanel()
+
+                    Row {
+                        spacing: 6
+
+                        BistableButton {
+                            first: "Constant"
+                            second: "Random"
+                            secondActive: ui.randomMode
+                            shortcut: "Z"
+                            enabled: window.controlsEnabled
+                            onToggled: Julia.toggleRandomMode()
+                        }
+
+                        BistableButton {
+                            first: "Relative"
+                            second: "Absolute"
+                            secondActive: ui.absoluteMode
+                            shortcut: "X"
+                            enabled: window.controlsEnabled
+                            onToggled: Julia.toggleAbsoluteMode()
+                        }
+                    }
+                }
+
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 10
-                    anchors.bottomMargin: 10
+                    id: perturbationBody
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.cardHeight
+                    Layout.margins: 10
                     spacing: 10
 
-                    Label {
-                        text: "Perturbations"
-                        font.bold: true
-                        font.pixelSize: 16
-                    }
+                    FieldCard {
+                        title: "Width"
+                        implicitWidth: 180
 
-                    PillButton {
-                        text: (ui.randomMode ? "Random" : "Constant") + "  [Z]"
-                        checked: ui.randomMode
-                        enabled: window.controlsEnabled
-                        onClicked: Julia.toggleRandomMode()
-                    }
+                        TextField {
+                            id: perturbationWidthField
+                            Layout.fillWidth: true
+                            selectByMouse: true
+                            // Validators use the "C" locale: the fields show and
+                            // Julia parses a decimal point, which a system locale
+                            // such as pl_PL rejects.
+                            validator: DoubleValidator {
+                                bottom: 0.0000000001
+                                top: 1.0
+                                notation: DoubleValidator.ScientificNotation
+                                locale: "C"
+                            }
+                            onActiveFocusChanged: window.textEditorFocused = activeFocus
+                            onEditingFinished: Julia.setPerturbationWidth(text)
 
-                    PillButton {
-                        text: (ui.absoluteMode ? "Absolute" : "Relative") + "  [X]"
-                        checked: ui.absoluteMode
-                        enabled: window.controlsEnabled
-                        onClicked: Julia.toggleAbsoluteMode()
-                    }
-
-                    Label {
-                        text: "Width"
-                    }
-
-                    TextField {
-                        id: perturbationWidthField
-                        Layout.preferredWidth: 82
-                        selectByMouse: true
-                        // Validators use the "C" locale: the fields show and
-                        // Julia parses a decimal point, which a system locale
-                        // such as pl_PL rejects.
-                        validator: DoubleValidator {
-                            bottom: 0.0000000001
-                            top: 1.0
-                            notation: DoubleValidator.ScientificNotation
-                            locale: "C"
-                        }
-                        onActiveFocusChanged: window.textEditorFocused = activeFocus
-                        onEditingFinished: Julia.setPerturbationWidth(text)
-
-                        Binding on text {
-                            value: Number(ui.perturbationWidth).toFixed(2)
-                            when: !perturbationWidthField.activeFocus
-                            restoreMode: Binding.RestoreBindingOrValue
+                            Binding on text {
+                                value: Number(ui.perturbationWidth).toFixed(2)
+                                when: !perturbationWidthField.activeFocus
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
                     }
 
-                    Label {
+                    FieldCard {
+                        title: "Height"
+                        implicitWidth: 180
                         visible: ui.absoluteMode
-                        text: "Height"
-                    }
 
-                    TextField {
-                        id: perturbationHeightField
-                        visible: ui.absoluteMode
-                        Layout.preferredWidth: 92
-                        selectByMouse: true
-                        validator: DoubleValidator {
-                            notation: DoubleValidator.ScientificNotation
-                            locale: "C"
-                        }
-                        onActiveFocusChanged: window.textEditorFocused = activeFocus
-                        onEditingFinished: Julia.setPerturbationHeight(text)
+                        TextField {
+                            id: perturbationHeightField
+                            Layout.fillWidth: true
+                            selectByMouse: true
+                            validator: DoubleValidator {
+                                notation: DoubleValidator.ScientificNotation
+                                locale: "C"
+                            }
+                            onActiveFocusChanged: window.textEditorFocused = activeFocus
+                            onEditingFinished: Julia.setPerturbationHeight(text)
 
-                        Binding on text {
-                            value: Number(ui.perturbationHeight).toString()
-                            when: !perturbationHeightField.activeFocus
-                            restoreMode: Binding.RestoreBindingOrValue
+                            Binding on text {
+                                value: Number(ui.perturbationHeight).toString()
+                                when: !perturbationHeightField.activeFocus
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
                     }
 
@@ -651,94 +604,64 @@ ApplicationWindow {
                         text: ui.absoluteMode
                               ? "Scroll: width   |   Ctrl + scroll: height"
                               : "Scroll: width   |   Ctrl + scroll: relative preview scale"
-                        color: "#68717d"
+                        color: Theme.mutedText
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
-                    }
-
-                    ToolButton {
-                        text: "Close"
-                        onClicked: window.closeBottomPanel()
                     }
                 }
             }
 
-            Item {
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 8
-                    anchors.bottomMargin: 8
-                    spacing: 6
+            ColumnLayout {
+                spacing: 0
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                DrawerHeader {
+                    title: "Split / Merge"
+                    onCloseRequested: window.closeBottomPanel()
 
-                        Label {
-                            text: "Split / Merge"
-                            font.bold: true
-                            font.pixelSize: 16
-                        }
+                    ScrollView {
+                        Layout.preferredWidth: Math.min(window.width * 0.45, partitionPanels.implicitWidth)
+                        Layout.preferredHeight: Theme.headerHeight
+                        contentHeight: availableHeight
+                        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                        clip: true
 
-                        ScrollView {
-                            Layout.preferredWidth: Math.min(
-                                window.width * 0.4,
-                                Math.max(90, ui.segmentCount * 86)
-                            )
-                            Layout.preferredHeight: 38
-                            contentHeight: availableHeight
-                            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-                            ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                            clip: true
-
-                            PanelSelector {
-                                y: (parent.height - height) / 2
-                                count: ui.segmentCount
-                                current: ui.selectedSegment
-                                enabled: window.controlsEnabled
-                                onActivated: panel => Julia.selectSplitSegment(panel)
-                            }
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth: 136
-                            Layout.preferredHeight: 34
-                            visible: ui.segmentCount > 1
-                            radius: 5
-                            color: ui.synchronizationStatus === "Synchronized"
-                                   ? "#26945b"
-                                   : ui.synchronizationStatus === "Synchronizing..."
-                                     ? "#d79a22" : "#e06a2f"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: ui.synchronizationStatus
-                                color: "white"
-                                font.bold: true
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: window.controlsEnabled
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Julia.synchronizeDomains()
-                            }
-                        }
-
-                        ToolButton {
-                            text: "Close"
-                            onClicked: window.closeBottomPanel()
+                        PanelSelector {
+                            id: partitionPanels
+                            y: (parent.height - height) / 2
+                            count: ui.segmentCount
+                            current: ui.selectedSegment
+                            enabled: window.controlsEnabled
+                            onActivated: panel => Julia.selectSplitSegment(panel)
                         }
                     }
 
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    TileButton {
+                        Layout.preferredWidth: 136
+                        visible: ui.segmentCount > 1
+                        tone: ui.synchronizationStatus === "Synchronized"
+                              ? "success"
+                              : ui.synchronizationStatus === "Synchronizing..." ? "warning" : "attention"
+                        text: ui.synchronizationStatus
+                        enabled: window.controlsEnabled
+                        onClicked: Julia.synchronizeDomains()
+                    }
+                }
+
+                ColumnLayout {
+                    id: partitionBody
+                    Layout.fillWidth: true
+                    Layout.margins: 10
+                    Layout.leftMargin: 16
+                    spacing: 8
+
                     RowLayout {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: bottomDrawer.rowHeight
                         spacing: 8
 
                         Label {
@@ -755,13 +678,15 @@ ApplicationWindow {
                             onMoved: Julia.setSplitIndex(Math.round(value))
                         }
 
-                        Button {
+                        TileButton {
+                            dark: false
                             enabled: window.controlsEnabled
                             text: ui.graphicsBusy ? "Updating..." : "Split selected panel"
                             onClicked: Julia.splitSelectedSegment()
                         }
 
-                        Button {
+                        TileButton {
+                            dark: false
                             enabled: ui.segmentCount > 1 && window.controlsEnabled
                             text: "Delete selected panel"
                             onClicked: Julia.deleteSelectedSegment()
@@ -774,12 +699,13 @@ ApplicationWindow {
                         Label {
                             visible: ui.segmentCount <= 1
                             text: "Split the domain to enable Merge, Swap and Delete."
-                            color: "#68717d"
+                            color: Theme.mutedText
                         }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: bottomDrawer.rowHeight
                         visible: ui.segmentCount > 1
                         spacing: 8
 
@@ -788,8 +714,10 @@ ApplicationWindow {
                             font.bold: true
                         }
 
+                        // As wide as its buttons, so the group grows with
+                        // the panel count; scrolls only when space runs out.
                         ScrollView {
-                            Layout.fillWidth: true
+                            Layout.preferredWidth: Math.min(window.width * 0.4, mergeButtons.implicitWidth)
                             Layout.preferredHeight: 42
                             contentHeight: availableHeight
                             ScrollBar.vertical.policy: ScrollBar.AlwaysOff
@@ -797,14 +725,16 @@ ApplicationWindow {
                             clip: true
 
                             Row {
+                                id: mergeButtons
                                 spacing: 6
 
                                 Repeater {
                                     model: Math.max(0, ui.segmentCount - 1)
 
-                                    PillButton {
+                                    TileButton {
                                         required property int index
-                                        y: 4
+                                        y: 6
+                                        dark: false
                                         enabled: window.controlsEnabled
                                         text: (index + 1) + " | " + (index + 2)
                                         onClicked: Julia.mergeBoundary(index + 1)
@@ -814,12 +744,13 @@ ApplicationWindow {
                         }
 
                         Label {
+                            Layout.leftMargin: 14
                             text: "Swap:"
                             font.bold: true
                         }
 
                         ScrollView {
-                            Layout.fillWidth: true
+                            Layout.preferredWidth: Math.min(window.width * 0.4, swapButtons.implicitWidth)
                             Layout.preferredHeight: 42
                             contentHeight: availableHeight
                             ScrollBar.vertical.policy: ScrollBar.AlwaysOff
@@ -827,20 +758,26 @@ ApplicationWindow {
                             clip: true
 
                             Row {
+                                id: swapButtons
                                 spacing: 6
 
                                 Repeater {
                                     model: Math.max(0, ui.segmentCount - 1)
 
-                                    PillButton {
+                                    TileButton {
                                         required property int index
-                                        y: 4
+                                        y: 6
+                                        dark: false
                                         enabled: window.controlsEnabled
                                         text: (index + 1) + " ↔ " + (index + 2)
                                         onClicked: Julia.swapBoundary(index + 1)
                                     }
                                 }
                             }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
                         }
                     }
                 }
@@ -914,30 +851,9 @@ ApplicationWindow {
                 anchors.fill: parent
                 spacing: 0
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    color: "#2b313b"
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 8
-
-                        Label {
-                            text: "Models and equations"
-                            color: "white"
-                            font.bold: true
-                            font.pixelSize: 16
-                            Layout.fillWidth: true
-                        }
-
-                        ToolButton {
-                            text: "Close"
-                            palette.buttonText: "white"
-                            onClicked: modelDrawer.close()
-                        }
-                    }
+                DrawerHeader {
+                    title: "Models and equations"
+                    onCloseRequested: modelDrawer.close()
                 }
 
                 ScrollView {
@@ -1069,37 +985,23 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
 
-                                Button {
+                                TileButton {
                                     Layout.fillWidth: true
+                                    dark: false
                                     text: "Neumann"
-                                    highlighted: ui.boundaryName === text
+                                    checked: ui.boundaryName === text
                                     enabled: window.controlsEnabled
                                     onClicked: Julia.selectBoundaryCondition(text)
                                 }
 
-                                Button {
+                                TileButton {
                                     Layout.fillWidth: true
+                                    dark: false
                                     text: "Periodic"
-                                    highlighted: ui.boundaryName === text
+                                    checked: ui.boundaryName === text
                                     enabled: window.controlsEnabled
                                     onClicked: Julia.selectBoundaryCondition(text)
                                 }
-                            }
-                        }
-
-                        ControlSection {
-                            title: "Spatial profile"
-                            visible: window.spatialProfileSets.length > 0
-                            Layout.leftMargin: 9
-                            Layout.rightMargin: 9
-
-                            ComboBox {
-                                Layout.fillWidth: true
-                                enabled: window.controlsEnabled
-                                model: window.spatialProfileSets
-                                // The Julia index is one-based.
-                                currentIndex: ui.spatialProfileSetIndex - 1
-                                onActivated: Julia.selectSpatialProfileSet(currentIndex + 1)
                             }
                         }
 
@@ -1174,8 +1076,16 @@ ApplicationWindow {
 
     Popup {
         id: controlDrawer
+        // Positioned in the window overlay, just above the bottom bar.
+        readonly property real bottomEdge: parent.height - bottomBar.height
+        parent: Overlay.overlay
         x: 0
-        y: parent.height - height
+        y: bottomEdge - height
+        // The slide-in animation replaces the y binding, so the drawer is
+        // re-anchored to the bottom bar whenever its size or the window
+        // changes (e.g. Split / Merge grows upwards after a split).
+        onHeightChanged: if (visible) y = bottomEdge - height
+        onBottomEdgeChanged: if (visible) y = bottomEdge - height
         width: parent.width
         height: 132
         modal: true
@@ -1187,8 +1097,8 @@ ApplicationWindow {
         enter: Transition {
             NumberAnimation {
                 property: "y"
-                from: controlDrawer.parent.height
-                to: controlDrawer.parent.height - controlDrawer.height
+                from: controlDrawer.bottomEdge
+                to: controlDrawer.bottomEdge - controlDrawer.height
                 duration: 180
                 easing.type: Easing.OutCubic
             }
@@ -1197,8 +1107,8 @@ ApplicationWindow {
         exit: Transition {
             NumberAnimation {
                 property: "y"
-                from: controlDrawer.parent.height - controlDrawer.height
-                to: controlDrawer.parent.height
+                from: controlDrawer.bottomEdge - controlDrawer.height
+                to: controlDrawer.bottomEdge
                 duration: 150
                 easing.type: Easing.InCubic
             }
@@ -1207,8 +1117,8 @@ ApplicationWindow {
         onClosed: window.textEditorFocused = false
 
         background: Rectangle {
-            color: "#f3f5f8"
-            border.color: "#aab3bf"
+            color: Theme.panel
+            border.color: Theme.panelBorder
             border.width: 1
         }
 
@@ -1216,58 +1126,25 @@ ApplicationWindow {
             anchors.fill: parent
             spacing: 0
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 46
-                color: "#2b313b"
+            DrawerHeader {
+                title: "Set steady state"
+                onCloseRequested: controlDrawer.close()
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 8
-                    spacing: 9
+                ScrollView {
+                    Layout.preferredWidth: Math.min(window.width * 0.45, steadyPanels.implicitWidth)
+                    Layout.preferredHeight: Theme.headerHeight
+                    contentHeight: availableHeight
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                    clip: true
 
-                    Label {
-                        text: "Set steady state"
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: 16
-                    }
-
-                    Label {
-                        text: "Target panel"
-                        color: "#cbd3dc"
-                        font.bold: true
-                    }
-
-                    ScrollView {
-                        Layout.preferredWidth: Math.min(
-                            window.width * 0.4,
-                            Math.max(90, ui.segmentCount * 86)
-                        )
-                        Layout.preferredHeight: 38
-                        contentHeight: availableHeight
-                        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                        clip: true
-
-                        PanelSelector {
-                            y: (parent.height - height) / 2
-                            count: ui.segmentCount
-                            current: ui.selectedSegment
-                            enabled: window.controlsEnabled
-                            onActivated: panel => Julia.selectSegment(panel)
-                        }
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-
-                    ToolButton {
-                        text: "Close"
-                        palette.buttonText: "white"
-                        onClicked: controlDrawer.close()
+                    PanelSelector {
+                        id: steadyPanels
+                        y: (parent.height - height) / 2
+                        count: ui.segmentCount
+                        current: ui.selectedSegment
+                        enabled: window.controlsEnabled
+                        onActivated: panel => Julia.selectSegment(panel)
                     }
                 }
             }
@@ -1292,42 +1169,30 @@ ApplicationWindow {
                     Repeater {
                         model: window.variables
 
-                        Rectangle {
+                        FieldCard {
                             required property int index
                             required property var modelData
-                            width: 260
-                            height: 54
+                            title: modelData
                             y: Math.max(0, (steadyValuesScroll.availableHeight - height) / 2)
-                            radius: 5
-                            color: "#e7ebf0"
-                            border.color: "#c3cad4"
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                spacing: 7
-
-                                Label {
-                                    text: modelData
-                                    font.bold: true
-                                    Layout.preferredWidth: 42
-                                    elide: Text.ElideRight
+                            TextField {
+                                id: constantValue
+                                Layout.fillWidth: true
+                                text: "0.0"
+                                selectByMouse: true
+                                validator: DoubleValidator { locale: "C" }
+                                onActiveFocusChanged: window.textEditorFocused = activeFocus
+                                onAccepted: {
+                                    if (window.controlsEnabled)
+                                        Julia.applyConstantInitialCondition(index, text)
                                 }
+                            }
 
-                                TextField {
-                                    id: constantValue
-                                    Layout.fillWidth: true
-                                    text: "0.0"
-                                    selectByMouse: true
-                                    validator: DoubleValidator { locale: "C" }
-                                    onActiveFocusChanged: window.textEditorFocused = activeFocus
-                                }
-
-                                Button {
-                                    text: "Apply"
-                                    enabled: window.controlsEnabled
-                                    onClicked: Julia.applyConstantInitialCondition(index, constantValue.text)
-                                }
+                            TileButton {
+                                dark: false
+                                text: "Apply"
+                                enabled: window.controlsEnabled
+                                onClicked: Julia.applyConstantInitialCondition(index, constantValue.text)
                             }
                         }
                     }
@@ -1381,6 +1246,14 @@ ApplicationWindow {
         enabled: window.active && !window.textEditorFocused && window.controlsEnabled
         autoRepeat: false
         onActivated: Julia.resetSimulation()
+    }
+
+    Shortcut {
+        sequence: "T"
+        context: Qt.WindowShortcut
+        enabled: window.active && !window.textEditorFocused && window.controlsEnabled
+        autoRepeat: false
+        onActivated: Julia.hardReset()
     }
 
     Shortcut {

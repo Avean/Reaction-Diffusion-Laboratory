@@ -125,7 +125,7 @@ Window {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
-            color: "#20252d"
+            color: Theme.bar
 
             RowLayout {
                 anchors.fill: parent
@@ -147,32 +147,10 @@ Window {
                     elide: Text.ElideRight
                 }
 
-                ToolButton {
-                    id: closeSeriesButton
+                TileButton {
                     text: "Close series mode"
                     enabled: !ui.seriesRunning
-                    font.bold: true
-                    palette.buttonText: "white"
-                    contentItem: Text {
-                        text: parent.text
-                        color: "white"
-                        font: parent.font
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 5
-                        border.width: 1
-                        border.color: closeSeriesButton.enabled
-                                      ? (closeSeriesButton.hovered ? "#bfdbfe" : "#64748b")
-                                      : "#475569"
-                        color: !closeSeriesButton.enabled ? "#334155"
-                              : closeSeriesButton.pressed ? "#1e3a8a"
-                              : closeSeriesButton.hovered ? "#2563eb" : "#475569"
-                    }
                     onClicked: Julia.setSeriesMode(false)
-                    ToolTip.visible: hovered && ui.seriesRunning
-                    ToolTip.text: "Stop the series first"
                 }
             }
         }
@@ -199,85 +177,45 @@ Window {
                         width: parent.width
                         spacing: 9
 
-                        // A plain rectangle rather than a styled Button: the
-                        // native Windows style ignores custom backgrounds.
-                        Rectangle {
-                            id: startStopButton
-                            property bool active: ui.seriesRunning || seriesWindow.perturbations.length > 0
+                        TileButton {
                             Layout.leftMargin: 10
                             Layout.rightMargin: 10
                             Layout.topMargin: 12
                             Layout.fillWidth: true
                             Layout.preferredHeight: 56
-                            radius: 7
-                            color: !active
-                                   ? "#9ca3af"
-                                   : ui.seriesRunning
-                                     ? (startStopMouse.pressed ? "#991b1b" : startStopMouse.containsMouse ? "#b91c1c" : "#dc2626")
-                                     : (startStopMouse.pressed ? "#14532d" : startStopMouse.containsMouse ? "#15803d" : "#16a34a")
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: !ui.seriesRunning
-                                      ? "Start series"
-                                      : ui.seriesSingleRun
-                                        ? "Stop run one"
-                                        : "Stop series   (" + ui.seriesCompletedRuns + " / " + ui.seriesTotalRuns + ")"
-                                color: "white"
-                                font.bold: true
-                                font.pixelSize: 18
-                            }
-
-                            MouseArea {
-                                id: startStopMouse
-                                anchors.fill: parent
-                                enabled: startStopButton.active
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (ui.seriesRunning)
-                                        Julia.stopSeries()
-                                    else if (seriesWindow.commitSeriesSettings())
-                                        Julia.startSeries()
-                                }
+                            fontPixelSize: 18
+                            tone: ui.seriesRunning ? "danger" : "success"
+                            enabled: ui.seriesRunning || seriesWindow.perturbations.length > 0
+                            text: !ui.seriesRunning
+                                  ? "Start series"
+                                  : ui.seriesSingleRun
+                                    ? "Stop run one"
+                                    : "Stop series   (" + ui.seriesCompletedRuns + " / " + ui.seriesTotalRuns + ")"
+                            onClicked: {
+                                if (ui.seriesRunning)
+                                    Julia.stopSeries()
+                                else if (seriesWindow.commitSeriesSettings())
+                                    Julia.startSeries()
                             }
                         }
 
                         // Diagnostics: add one realization to the statistics,
                         // then restore the state captured on entering Series.
-                        Rectangle {
-                            id: runOneButton
-                            property bool active: !ui.seriesRunning && seriesWindow.perturbations.length > 0
+                        TileButton {
                             Layout.leftMargin: 10
                             Layout.rightMargin: 10
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
-                            radius: 7
-                            color: !active
-                                   ? "#c7ccd4"
-                                   : runOneMouse.pressed ? "#3730a3" : runOneMouse.containsMouse ? "#4338ca" : "#4f46e5"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Run one"
-                                color: "white"
-                                font.bold: true
-                                font.pixelSize: 15
+                            fontPixelSize: 15
+                            tone: "accent"
+                            enabled: !ui.seriesRunning && seriesWindow.perturbations.length > 0
+                            text: "Run one"
+                            onClicked: {
+                                if (seriesWindow.commitSeriesSettings())
+                                    Julia.runOneSeries()
                             }
 
-                            MouseArea {
-                                id: runOneMouse
-                                anchors.fill: parent
-                                enabled: runOneButton.active
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (seriesWindow.commitSeriesSettings())
-                                        Julia.runOneSeries()
-                                }
-                            }
-
-                            ToolTip.visible: runOneMouse.containsMouse
+                            ToolTip.visible: hovered
                             ToolTip.text: "Run one realization, add it to the statistics, then restore the original state on the main plots"
                         }
 
@@ -412,6 +350,7 @@ Window {
                                 Layout.fillWidth: true
                                 count: ui.segmentCount
                                 current: ui.seriesSelectedSegment
+                                dark: false
                                 badges: seriesWindow.panelPerturbationCounts
                                 onActivated: panel => Julia.selectSeriesSegment(panel)
                             }
@@ -481,8 +420,9 @@ Window {
                                     }
                                 }
 
-                                Button {
+                                TileButton {
                                     Layout.alignment: Qt.AlignRight
+                                    dark: false
                                     text: "Add perturbation"
                                     onClicked: Julia.addSeriesPerturbation()
                                 }
@@ -541,17 +481,9 @@ Window {
                                                 font.bold: true
                                             }
 
-                                            // Tab moves only between the value fields.
-                                            ToolButton {
+                                            TileButton {
+                                                dark: false
                                                 enabled: !ui.seriesRunning
-                                                focusPolicy: Qt.NoFocus
-                                                text: "Select"
-                                                onClicked: Julia.selectSeriesPerturbation(perturbationCard.perturbationId)
-                                            }
-
-                                            ToolButton {
-                                                enabled: !ui.seriesRunning
-                                                focusPolicy: Qt.NoFocus
                                                 text: "Delete"
                                                 onClicked: Julia.deleteSeriesPerturbation(perturbationCard.perturbationId)
                                             }
@@ -662,6 +594,7 @@ Window {
                 PanelSelector {
                     Layout.fillWidth: true
                     visible: ui.segmentCount > 1
+                    dark: false
                     count: ui.segmentCount
                     current: ui.seriesSelectedSegment
                     onActivated: panel => Julia.selectSeriesSegment(panel)
@@ -729,21 +662,14 @@ Window {
                                 { key: "3", resolution: 100 }
                             ]
 
-                            Rectangle {
+                            TileButton {
                                 required property var modelData
-                                Layout.preferredWidth: 26
-                                Layout.preferredHeight: 26
-                                radius: 4
-                                property bool active: Number(ui.domainResolution) === modelData.resolution
-                                color: active ? "#2563eb" : "#64748b"
-                                border.color: active ? "#93c5fd" : "#94a3b8"
-                                Text { anchors.centerIn: parent; text: parent.modelData.key; color: "white"; font.bold: true }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !ui.seriesRunning
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Julia.setDomainResolution(parent.modelData.resolution)
-                                }
+                                Layout.preferredWidth: 30
+                                dark: false
+                                text: modelData.key
+                                checked: Number(ui.domainResolution) === modelData.resolution
+                                enabled: !ui.seriesRunning
+                                onClicked: Julia.setDomainResolution(modelData.resolution)
                             }
                         }
 

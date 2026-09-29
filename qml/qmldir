@@ -1,0 +1,11 @@
+singleton Theme 1.0 Theme.qml
+BistableButton 1.0 BistableButton.qml
+ControlSection 1.0 ControlSection.qml
+DrawerHeader 1.0 DrawerHeader.qml
+FieldCard 1.0 FieldCard.qml
+PanelSelector 1.0 PanelSelector.qml
+SeriesBarChart 1.0 SeriesBarChart.qml
+SeriesConfigurationChart 1.0 SeriesConfigurationChart.qml
+SeriesLineChart 1.0 SeriesLineChart.qml
+SeriesWindow 1.0 SeriesWindow.qml
+TileButton 1.0 TileButton.qml

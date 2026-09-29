@@ -10,8 +10,8 @@
 #
 #     - one plot for every model variable,
 #     - gray dashed preview curves for local perturbations,
-#     - optional spatial profile plots (the active profile set is chosen
-#       in the QML model drawer).
+#     - optional spatial profile plots with a Previous/Next selector for
+#       the active profile set.
 #
 # ============================================================
 
@@ -23,6 +23,7 @@
 function empty_plot_panel()
     return PlotPanel(
         Axis[],
+        Any[],
         1.0,
         Any[],
         Vector{Axis}[],
@@ -293,6 +294,7 @@ function build_spatial_profile_panel!(
         return (
             axes = [Axis[] for _ in 1:nsegments],
             observables = [Observable{Vector{Float64}}[] for _ in 1:nsegments],
+            items = Any[],
             refresh = () -> nothing,
         )
     end
@@ -344,12 +346,41 @@ function build_spatial_profile_panel!(
         rowsize!(grid, row, Fixed(120))
     end
 
+    # Previous / set name / Next under the profile plots, styled like the
+    # light tiles of the QML interface (qml/Theme.qml).
+    nav_row = start_row + max_profiles
+    nav_grid = GridLayout(tellwidth = false, tellheight = true)
+    grid[nav_row, 1:nsegments] = nav_grid
+    tile_style = (
+        buttoncolor = "#e7ebf0",
+        buttoncolor_hover = "#dde3ea",
+        buttoncolor_active = "#dbeafe",
+        strokecolor = "#c3cad4",
+        strokewidth = 1,
+        cornerradius = 4,
+        labelcolor = "#20252d",
+        font = :bold,
+        height = 28,
+        tellwidth = false,
+    )
+    previous_button = Button(nav_grid[1, 1]; label = "Previous", tile_style...)
+    set_label_obs = Observable("")
+    set_label = Label(nav_grid[1, 2], set_label_obs; font = :bold, tellwidth = false)
+    next_button = Button(nav_grid[1, 3]; label = "Next", tile_style...)
+    colsize!(nav_grid, 1, Fixed(90))
+    colsize!(nav_grid, 2, Fixed(200))
+    colsize!(nav_grid, 3, Fixed(90))
+    colgap!(nav_grid, 8)
+    rowsize!(grid, nav_row, Fixed(36))
+    items = Any[previous_button, set_label, next_button, nav_grid]
+
     function refresh_profile_set!()
         current_profile_sets = app.sim.model.spatial_profile_sets
         isempty(current_profile_sets) && return nothing
 
         set_index = _active_spatial_profile_set_index(app.sim.params, current_profile_sets)
-        _, profiles = current_profile_sets[set_index]
+        set_name, profiles = current_profile_sets[set_index]
+        set_label_obs[] = "Spatial profile: $(set_name)"
         # A layout rebuild after Split, Swap, Delete, Merge, or Restore must
         # display the profile arrays carried by the segments, not regenerate
         # them on the possibly shortened/reordered global domain.
@@ -391,11 +422,23 @@ function build_spatial_profile_panel!(
         return nothing
     end
 
+    function step_profile_set!(step::Int)
+        nsets = length(app.sim.model.spatial_profile_sets)
+        nsets == 0 && return nothing
+        current = _active_spatial_profile_set_index(app.sim.params, app.sim.model.spatial_profile_sets)
+        set_active_spatial_profile_set_app!(app, mod1(current + step, nsets))
+        return nothing
+    end
+
+    on(_ -> step_profile_set!(-1), previous_button.clicks)
+    on(_ -> step_profile_set!(1), next_button.clicks)
+
     refresh_profile_set!()
 
     return (
         axes = profile_axes,
         observables = profile_observables,
+        items = items,
         refresh = refresh_profile_set!,
     )
 end
@@ -572,6 +615,7 @@ function build_plot_panel!(
 
     panel = PlotPanel(
         all_axes,
+        profile_panel.items,
         1.0,
         Any[perturbation_state],
         segment_axes,
@@ -671,6 +715,17 @@ end
 # ============================================================
 
 function delete_plot_panel_item!(item)
+    if item isa GridLayout
+        try
+            grid_content = Makie.gridcontent(item)
+            grid_content === nothing ||
+                Makie.GridLayoutBase.remove_from_gridlayout!(grid_content)
+        catch
+        end
+
+        return nothing
+    end
+
     try
         delete!(item)
     catch
@@ -707,7 +762,12 @@ function clear_plot_panel!(panel::PlotPanel)
         delete_plot_panel_item!(ax)
     end
 
+    for item in panel.ui_items
+        delete_plot_panel_item!(item)
+    end
+
     empty!(panel.axes)
+    empty!(panel.ui_items)
     panel.domain_length_scale = 1.0
     empty!(panel.perturbation_controls)
     empty!(panel.segment_axes)

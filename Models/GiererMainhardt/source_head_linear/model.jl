@@ -31,6 +31,7 @@ RDModel(
     parameters = (
         
         τ = τ0,
+        γ = 1e2,
         
         Du = 1e-2,
         Dv = 1e0,
@@ -118,7 +119,7 @@ RDModel(
         @. F.u = p.a * U.sd * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu
         @. F.v = p.b * U.sd * U.u^2 - p.μv * U.v + p.pv
         # @. F.h = 0.01 .* (U.u - 14.0 * U.h *(U.h^2.0 .* 4.0 - 5.2 * U.h + 2.0))
-        @. F.h = 0.01 .*(U.u - U.h)
+        @. F.h = (U.u - U.h) / p.γ
         @. F.sd = (1.0 + 5*U.h  - U.sd) / p.τ
 
         return nothing
