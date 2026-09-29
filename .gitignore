@@ -1,0 +1,11 @@
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Julia coverage and memory profiling output
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
