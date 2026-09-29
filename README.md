@@ -89,20 +89,17 @@ takes several minutes.
 ## Running
 
 ```bash
-julia --threads=auto --project=. main_qml.jl
+julia --threads=auto --project=. app.jl
 ```
 
 Use `--threads=auto` so that domain panels and series runs use separate
-threads. From an open REPL, `include("main_qml.jl")` works as well; a second
+threads. From an open REPL, `include("app.jl")` works as well; a second
 start in the same session is much faster.
-
-`main.jl` starts the older pure-GLMakie interface.
 
 ## Project layout
 
 ```
-main_qml.jl            entry point of the QML application
-main.jl                entry point of the legacy GLMakie interface
+app.jl                 entry point of the application
 src/
   ReactionDiffusionApp.jl  core module: models, grid, solver, series
   ModelDSL.jl              RDModel definition layer
