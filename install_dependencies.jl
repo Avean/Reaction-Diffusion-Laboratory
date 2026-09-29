@@ -52,10 +52,7 @@ function install_dependencies()
     println()
     println("Dependency installation completed successfully.")
     println("Start the application with:")
-    println("    julia --threads=auto --project=. main_qml.jl")
-    println()
-    println("The previous GLMakie interface remains available with:")
-    println("    julia --threads=auto --project=. main.jl")
+    println("    julia --threads=auto --project=. app.jl")
 
     return nothing
 end

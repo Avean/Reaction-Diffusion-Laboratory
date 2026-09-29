@@ -1,4 +1,4 @@
-# main_qml.jl loads the startup splash before any heavy package; load it here
+# app.jl loads the startup splash before any heavy package; load it here
 # when this file is included on its own.
 isdefined(@__MODULE__, :StartupSplash) || include(joinpath(@__DIR__, "StartupSplash.jl"))
 

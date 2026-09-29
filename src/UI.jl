@@ -38,7 +38,7 @@ function run_app(;
         The application will still work, but the simulation worker cannot run
         on a separate thread. Start Julia with for example:
 
-            julia --threads=2 main.jl
+            julia --threads=2 app.jl
 
         or set JULIA_NUM_THREADS before starting Julia.
         """
