@@ -33,7 +33,6 @@ automatically at startup. The repository ships with:
 | Family | Models |
 |---|---|
 | Gierer–Meinhardt | basic, degradation, no K, oscillations, ρ profile, source, source head, linear source head, zero diffusion |
-| MathBio | Gierer–Meinhardt variants (basic, ρ, source, source τ, zero diffusion) |
 | Mechanochemical | global integral, squared global integral, local kernel, normalized kernel, normalized ring kernel, oscillating ramp |
 | Stem cells | quiescent / active stem-cell populations |
 
@@ -111,7 +110,6 @@ src/
   SplashProcess.jl         the splash window's own process
 qml/                   QML windows (main window, series window, splash)
 Models/                model definitions and series presets
-ModelsOld/             older models, not loaded
 ```
 
 ## Platform notes

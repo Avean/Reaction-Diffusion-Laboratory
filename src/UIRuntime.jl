@@ -185,26 +185,6 @@ function refresh_ui_from_latest_snapshots!(app::AppState)
 end
 
 
-function start_ui_snapshot_poller!(
-    app::AppState;
-    refresh_interval::Float64 = 1 / 30,
-)
-    if app.ui_task_ref[] !== nothing && !istaskdone(app.ui_task_ref[])
-        return nothing
-    end
-
-    app.ui_task_ref[] = @async begin
-        while true
-            refresh_ui_from_latest_snapshots!(app)
-            yield()
-            sleep(refresh_interval)
-        end
-    end
-
-    return nothing
-end
-
-
 function start_worker!(
     app::AppState;
     steps_per_frame::Int = 5,

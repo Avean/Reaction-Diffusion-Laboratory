@@ -46,15 +46,8 @@ include("PerturbationPanel.jl")
 include("PlotPanel.jl")
 
 include("UIRuntime.jl")
-include("TopMenu.jl")
-include("ControlPanel.jl")
 include("PartitionControlPanel.jl")
-include("UI.jl")
 
-
-
-
-export run_app
 
 export ModelSpec
 export RDModel
