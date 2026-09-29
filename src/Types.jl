@@ -166,23 +166,6 @@ mutable struct PartitionSnapshot
 end
 
 
-mutable struct SnapshotBuffer
-    latest::Base.RefValue{Union{Nothing, PartitionSnapshot}}
-    # The newest snapshot produced by the worker thread.
-
-    lock::ReentrantLock
-    # Lock protecting access to the latest snapshot.
-end
-
-
-function empty_snapshot_buffer()
-    return SnapshotBuffer(
-        Ref{Union{Nothing, PartitionSnapshot}}(nothing),
-        ReentrantLock(),
-    )
-end
-
-
 mutable struct SegmentRuntime
     running::Threads.Atomic{Bool}
     task_ref::Base.RefValue{Union{Nothing, Task}}
@@ -228,6 +211,7 @@ struct SavedSimulationState
     requested_dtmax::Float64
     initial_N::Int
     initial_boundary_condition::Symbol
+    parameter_overrides::Dict{Symbol, Float64}
 end
 
 
@@ -237,12 +221,8 @@ end
 
 mutable struct PlotPanel
     axes::Vector{Axis}
-    x_observable::Observable{Vector{Float64}}
     domain_length_scale::Float64
-    observables::Vector{Observable{Vector{Float64}}}
-    preview_observables::Vector{Observable{Vector{Float64}}}
     perturbation_controls::Vector{Any}
-    ui_items::Vector{Any}
 
     segment_axes::Vector{Vector{Axis}}
     segment_x_observables::Vector{Observable{Vector{Float64}}}
@@ -255,6 +235,8 @@ mutable struct PlotPanel
     split_marker_alpha_observables::Vector{Observable{Float64}}
     split_marker_fade_tokens::Vector{Base.RefValue{Int}}
     segment_status_observables::Vector{Observable{String}}
+    refresh_spatial_profiles::Function
+    # Redraws the spatial profile plots for the active profile set.
 end
 
 # ============================================================
@@ -300,12 +282,6 @@ mutable struct AppState
     worker_task_ref::Base.RefValue{Union{Nothing, Task}}
     # Reference to the threaded simulation worker task.
 
-    ui_task_ref::Base.RefValue{Union{Nothing, Task}}
-    # Reference to the UI-side snapshot polling task.
-
-    snapshot_buffer::SnapshotBuffer
-    # Latest simulation snapshot shared between the worker and UI.
-
     generation::Threads.Atomic{Int}
     # Incremented whenever the model is switched.
     # Old snapshots with older generations are ignored.
@@ -324,11 +300,13 @@ mutable struct AppState
     # One reusable in-memory checkpoint. Model changes invalidate it, while
     # Reset and domain-topology edits intentionally leave it available.
 
-    show_embedded_perturbation_controls::Bool
-    # The legacy GLMakie interface keeps its controls inside the plot layout.
-    # The QML interface renders the same state in its own bottom drawer.
-
     mouse_perturbations_enabled::Threads.Atomic{Bool}
     # Cleared while the QML series mode is active, so the plots show the
     # series previews without reacting to mouse perturbation input.
+
+    parameter_overrides::Dict{Symbol, Float64}
+    # Parameter values set by the user for the current model, kept by Reset
+    # and boundary-condition changes and cleared by a model change. Diffusion
+    # parameters are stored unscaled (domain scale 1), so that a value set at
+    # any domain scale keeps its meaning when the scale changes.
 end

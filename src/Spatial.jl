@@ -37,11 +37,6 @@ function boundary_condition_from_label(label::String)
 end
 
 
-function boundary_condition_labels()
-    return ["Neumann", "Periodic"]
-end
-
-
 function make_grid_1d(
     N::Int;
     xmin::Float64 = 0.0,

@@ -35,15 +35,20 @@ function solution_matrix(y::AbstractVector, N::Int, nvars::Int)
 end
 
 
-function make_initial_state(model::ModelSpec, x::Vector{Float64})
+function make_initial_state(
+    model::ModelSpec,
+    x::Vector{Float64};
+    parameters::AbstractDict{Symbol} = Dict{Symbol, Float64}(),
+)
     # Create the initial condition for a given model.
     #
     # The model initializes a matrix U0 of size N × nvars.
-    # The solver receives vec(U0).
+    # The solver receives vec(U0). `parameters` override the model defaults.
 
     N = length(x)
 
     params = Dict{Symbol, Any}(model.default_params)
+    merge!(params, parameters)
     U0 = zeros(Float64, N, model.nvars)
 
     model.initialize!(U0, x, params)
@@ -90,6 +95,7 @@ function create_simulation_state(
     dtmax::Float64 = 1e-2,
     reltol::Float64 = 1e-5,
     abstol::Float64 = 1e-7,
+    parameters::AbstractDict{Symbol} = Dict{Symbol, Float64}(),
 )
     # Create a complete simulation state for the selected model.
 
@@ -109,7 +115,7 @@ function create_simulation_state(
         boundary_condition = boundary_condition,
     )
 
-    y0, params = make_initial_state(model, x)
+    y0, params = make_initial_state(model, x; parameters = parameters)
 
     time_offset = Ref(0.0)
     prob = make_problem(model, y0, Lap, x, params, time_offset)
@@ -329,55 +335,6 @@ function restart_after_manual_change!(
 end
 
 
-function kick_all!(
-    sim::SimulationState;
-    amount::Float64 = 1.0,
-    variable::Int = 1,
-)
-    # Add a constant perturbation to one selected variable.
-
-    1 <= variable <= sim.model.nvars ||
-        error("Invalid variable index.")
-
-    U = copy(solution_matrix(sim))
-    U[:, variable] .+= amount
-
-    restart_after_manual_change!(sim, vec(U))
-
-    return nothing
-end
-
-
-function sinusoidal_kick!(
-    sim::SimulationState;
-    amount::Float64 = 1.0,
-    mode::Int = 1,
-    variable::Int = 1,
-    shift::Float64 = 0.0,
-    clip_to_nonnegative::Bool = false,
-)
-    # Add a sinusoidal perturbation to one selected variable.
-
-    1 <= variable <= sim.model.nvars ||
-        error("Invalid variable index.")
-
-    mode >= 1 ||
-        error("Mode must be at least 1.")
-
-    U = copy(solution_matrix(sim))
-
-    @. U[:, variable] += amount * sin(2π * mode * sim.x) + shift
-
-    if clip_to_nonnegative
-        @. U[:, variable] = max(U[:, variable], 0.0)
-    end
-
-    restart_after_manual_change!(sim, vec(U))
-
-    return nothing
-end
-
-
 # ============================================================
 # Snapshots
 # ============================================================
@@ -400,60 +357,6 @@ function make_snapshot(sim::SimulationState, generation::Int)
         current_dtmax(sim),
         sim.step_counter[],
     )
-end
-
-
-function put_latest_snapshot!(
-    buffer::SnapshotBuffer,
-    snapshot::PartitionSnapshot,
-)
-    # Store the newest snapshot.
-    #
-    # This buffer intentionally keeps only the latest snapshot. If the worker
-    # produces 100 snapshots while the UI draws 1 frame, the UI should draw
-    # only the most recent one instead of replaying obsolete frames.
-
-    lock(buffer.lock)
-
-    try
-        buffer.latest[] = snapshot
-    finally
-        unlock(buffer.lock)
-    end
-
-    return nothing
-end
-
-
-function take_latest_snapshot!(buffer::SnapshotBuffer)
-    # Take the newest snapshot and clear the buffer.
-    #
-    # Returns nothing if no snapshot is available.
-
-    lock(buffer.lock)
-
-    try
-        snapshot = buffer.latest[]
-        buffer.latest[] = nothing
-        return snapshot
-    finally
-        unlock(buffer.lock)
-    end
-end
-
-
-function clear_snapshot_buffer!(buffer::SnapshotBuffer)
-    # Remove any pending snapshot.
-
-    lock(buffer.lock)
-
-    try
-        buffer.latest[] = nothing
-    finally
-        unlock(buffer.lock)
-    end
-
-    return nothing
 end
 
 

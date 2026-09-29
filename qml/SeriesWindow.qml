@@ -21,6 +21,45 @@ Window {
         }
     }
     property var panelNames: Array.from({length: ui.segmentCount}, (_, index) => String(index + 1))
+    property string perturbationsJson: ui.seriesPerturbationsJson
+
+    // The perturbation cards are updated in place: rebuilding them after
+    // every edit would destroy the field being edited, losing its focus and
+    // breaking Tab navigation between the fields.
+    ListModel {
+        id: perturbationModel
+    }
+
+    function syncPerturbationModel() {
+        const items = JSON.parse(perturbationsJson)
+        let sameCards = items.length === perturbationModel.count
+        for (let index = 0; sameCards && index < items.length; ++index)
+            sameCards = perturbationModel.get(index).perturbationId === items[index].id
+
+        if (!sameCards)
+            perturbationModel.clear()
+
+        for (let index = 0; index < items.length; ++index) {
+            const item = items[index]
+            const entry = {
+                perturbationId: item.id,
+                panel: item.panel,
+                variable: item.variable,
+                position: item.position,
+                widthMin: item.widthMin,
+                widthMax: item.widthMax,
+                heightMin: item.heightMin,
+                heightMax: item.heightMax
+            }
+            if (sameCards)
+                perturbationModel.set(index, entry)
+            else
+                perturbationModel.append(entry)
+        }
+    }
+
+    onPerturbationsJsonChanged: syncPerturbationModel()
+    Component.onCompleted: syncPerturbationModel()
 
     visible: ui.seriesMode
     width: 1400
@@ -46,7 +85,8 @@ Window {
             toleranceField,
             requiredChecksField,
             dtmaxField,
-            maximumStepsField
+            maximumStepsField,
+            seedField
         ]
 
         for (let index = 0; index < fields.length; ++index) {
@@ -408,6 +448,7 @@ Window {
                                 TextField {
                                     id: seedField
                                     selectByMouse: true
+                                    validator: RegularExpressionValidator { regularExpression: /[0-9]{1,19}/ }
                                     text: ui.seriesSeed
                                     onEditingFinished: Julia.setSeriesSeed(text)
                                 }
@@ -442,19 +483,32 @@ Window {
                             }
 
                             Repeater {
-                                model: seriesWindow.perturbations
+                                model: perturbationModel
 
                                 Rectangle {
-                                    required property var modelData
+                                    id: perturbationCard
+                                    required property int perturbationId
+                                    required property int panel
+                                    required property int variable
+                                    required property real position
+                                    required property real widthMin
+                                    required property real widthMax
+                                    required property real heightMin
+                                    required property real heightMax
+
+                                    function commitField(field, value) {
+                                        Julia.updateSeriesPerturbation(perturbationId, field, value)
+                                    }
+
                                     Layout.fillWidth: true
-                                    implicitHeight: perturbationCard.implicitHeight + 16
+                                    implicitHeight: perturbationCardLayout.implicitHeight + 16
                                     color: "#e6eaf0"
                                     radius: 5
                                     border.color: "#bdc6d2"
                                     border.width: 1
 
                                     ColumnLayout {
-                                        id: perturbationCard
+                                        id: perturbationCardLayout
                                         anchors.fill: parent
                                         anchors.margins: 8
                                         spacing: 5
@@ -464,20 +518,23 @@ Window {
 
                                             Label {
                                                 Layout.fillWidth: true
-                                                text: "Perturbation " + modelData.id + "   ·   x = " + Number(modelData.position).toPrecision(5)
+                                                text: "Perturbation " + perturbationCard.perturbationId + "   ·   x = " + Number(perturbationCard.position).toPrecision(5)
                                                 font.bold: true
                                             }
 
+                                            // Tab moves only between the value fields.
                                             ToolButton {
                                                 enabled: !ui.seriesRunning
+                                                focusPolicy: Qt.NoFocus
                                                 text: "Select"
-                                                onClicked: Julia.selectSeriesPerturbation(modelData.id)
+                                                onClicked: Julia.selectSeriesPerturbation(perturbationCard.perturbationId)
                                             }
 
                                             ToolButton {
                                                 enabled: !ui.seriesRunning
+                                                focusPolicy: Qt.NoFocus
                                                 text: "Delete"
-                                                onClicked: Julia.deleteSeriesPerturbation(modelData.id)
+                                                onClicked: Julia.deleteSeriesPerturbation(perturbationCard.perturbationId)
                                             }
                                         }
 
@@ -488,18 +545,20 @@ Window {
                                             ComboBox {
                                                 Layout.preferredWidth: 75
                                                 enabled: !ui.seriesRunning
+                                                focusPolicy: Qt.ClickFocus
                                                 model: seriesWindow.panelNames
-                                                currentIndex: Math.max(0, modelData.panel - 1)
-                                                onActivated: Julia.updateSeriesPerturbation(modelData.id, "panel", currentIndex + 1)
+                                                currentIndex: Math.max(0, perturbationCard.panel - 1)
+                                                onActivated: perturbationCard.commitField("panel", currentIndex + 1)
                                             }
 
                                             Label { text: "Variable" }
                                             ComboBox {
                                                 Layout.fillWidth: true
                                                 enabled: !ui.seriesRunning
+                                                focusPolicy: Qt.ClickFocus
                                                 model: seriesWindow.variables
-                                                currentIndex: Math.max(0, modelData.variable - 1)
-                                                onActivated: Julia.updateSeriesPerturbation(modelData.id, "variable", currentIndex + 1)
+                                                currentIndex: Math.max(0, perturbationCard.variable - 1)
+                                                onActivated: perturbationCard.commitField("variable", currentIndex + 1)
                                             }
                                         }
 
@@ -512,8 +571,9 @@ Window {
                                                 Layout.fillWidth: true
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                text: Number(modelData.position).toPrecision(5)
-                                                onEditingFinished: Julia.updateSeriesPerturbation(modelData.id, "position", text)
+                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                text: Number(perturbationCard.position).toPrecision(5)
+                                                onEditingFinished: perturbationCard.commitField("position", text)
                                             }
                                         }
 
@@ -526,30 +586,34 @@ Window {
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                text: Number(modelData.widthMin).toFixed(2)
-                                                onEditingFinished: Julia.updateSeriesPerturbation(modelData.id, "widthMin", text)
+                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                text: Number(perturbationCard.widthMin).toFixed(2)
+                                                onEditingFinished: perturbationCard.commitField("widthMin", text)
                                             }
                                             Label { text: "Width max" }
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                text: Number(modelData.widthMax).toFixed(2)
-                                                onEditingFinished: Julia.updateSeriesPerturbation(modelData.id, "widthMax", text)
+                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                text: Number(perturbationCard.widthMax).toFixed(2)
+                                                onEditingFinished: perturbationCard.commitField("widthMax", text)
                                             }
 
                                             Label { text: "Height min" }
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                text: Number(modelData.heightMin).toFixed(1)
-                                                onEditingFinished: Julia.updateSeriesPerturbation(modelData.id, "heightMin", text)
+                                                validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                text: Number(perturbationCard.heightMin).toFixed(1)
+                                                onEditingFinished: perturbationCard.commitField("heightMin", text)
                                             }
                                             Label { text: "Height max" }
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                text: Number(modelData.heightMax).toFixed(1)
-                                                onEditingFinished: Julia.updateSeriesPerturbation(modelData.id, "heightMax", text)
+                                                validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                text: Number(perturbationCard.heightMax).toFixed(1)
+                                                onEditingFinished: perturbationCard.commitField("heightMax", text)
                                             }
                                         }
                                     }

@@ -1,4 +1,4 @@
-# Models/Mechanochemical/MechanochemicalKernel2.jl
+# Models/Mechanochemical/normalized_kernel/model.jl
 
 # ============================================================
 # Mechanochemical model with globally normalized local interaction

@@ -8,10 +8,10 @@
 mutable struct PerturbationControlState
     random_mode::Observable{Bool}
     absolute_mode::Observable{Bool}
-    width_textbox::Any
-    height_textbox::Any
-    width_value::Float64
-    updating_width_textbox::Bool
+    width::Observable{Float64}
+    # Perturbation width as a fraction of the panel length.
+    height::Observable{Float64}
+    # Target value used in absolute mode.
     relative_axis_scaled::Bool
     active_segment::Int
     active_variable::Int
@@ -64,51 +64,19 @@ function toggle_perturbation_absolute_mode!(app::AppState)
 end
 
 
-function set_perturbation_width_value!(
-    state::PerturbationControlState,
-    width::Real,
-)
-    state.width_value = Float64(width)
-    formatted_width = @sprintf("%.2f", state.width_value)
-
-    state.updating_width_textbox = true
-
-    try
-        state.width_textbox.displayed_string[] = formatted_width
-        state.width_textbox.stored_string[] = formatted_width
-    finally
-        state.updating_width_textbox = false
-    end
-
-    return nothing
-end
-
-
 function set_perturbation_width_value!(app::AppState, width::Real)
     state = active_perturbation_state(app)
     state === nothing && return false
-    set_perturbation_width_value!(state, width)
+    state.width[] = Float64(width)
 
     return true
-end
-
-
-function set_perturbation_height_value!(
-    state::PerturbationControlState,
-    height::Real,
-)
-    formatted_height = string(Float64(height))
-    state.height_textbox.displayed_string[] = formatted_height
-    state.height_textbox.stored_string[] = formatted_height
-
-    return nothing
 end
 
 
 function set_perturbation_height_value!(app::AppState, height::Real)
     state = active_perturbation_state(app)
     state === nothing && return false
-    set_perturbation_height_value!(state, height)
+    state.height[] = Float64(height)
 
     return true
 end
@@ -135,26 +103,11 @@ function local_perturbation_mask(
 end
 
 
-function textbox_float_value(textbox; default = nothing)
-    value = tryparse(Float64, textbox.stored_string[])
-
-    if value === nothing
-        return default
-    end
-
-    return value
-end
-
-
 function perturbation_control_values(app::AppState)
     state = active_perturbation_state(app)
     state === nothing && return (width = 0.05, height = 0.0)
 
-    height = textbox_float_value(state.height_textbox; default = 0.0)
-    return (
-        width = state.width_value,
-        height = height === nothing ? 0.0 : height,
-    )
+    return (width = state.width[], height = state.height[])
 end
 
 
@@ -179,7 +132,7 @@ function simulation_domain_position(
         0.0
     xmin = first(sim.x)
 
-    return xmin + fraction * simulation_domain_length(sim)
+    return xmin + fraction * segment_physical_length(sim)
 end
 
 
@@ -187,7 +140,7 @@ function simulation_domain_width(
     relative_width::Real,
     sim::SimulationState,
 )
-    return Float64(relative_width) * simulation_domain_length(sim)
+    return Float64(relative_width) * segment_physical_length(sim)
 end
 
 
@@ -279,7 +232,7 @@ function update_mouse_perturbation_preview!(
         return false
     end
 
-    width = state.width_value
+    width = state.width[]
 
     if !isfinite(width) || width <= 0 || width > 1
         clear_perturbation_previews!(app.plot_panel)
@@ -289,17 +242,12 @@ function update_mouse_perturbation_preview!(
     absolute_height = 0.0
 
     if state.absolute_mode[]
-        parsed_height = textbox_float_value(
-            state.height_textbox;
-            default = nothing,
-        )
-
-        if parsed_height === nothing || !isfinite(parsed_height)
+        if !isfinite(state.height[])
             clear_perturbation_previews!(app.plot_panel)
             return false
         end
 
-        absolute_height = parsed_height
+        absolute_height = state.height[]
     end
 
     success = false
@@ -396,9 +344,9 @@ function change_perturbation_width_from_scroll!(
     iszero(delta) &&
         return false
 
-    current_width = state.width_value
+    current_width = state.width[]
     sim = app.simulations[segment]
-    simulation_length = simulation_domain_length(sim)
+    simulation_length = segment_physical_length(sim)
 
     if !isfinite(current_width) || current_width <= 0
         current_width = 0.05
@@ -409,13 +357,11 @@ function change_perturbation_width_from_scroll!(
         max(sim.dx / simulation_length, eps(1.0)),
     )
 
-    new_width = clamp(
+    state.width[] = clamp(
         current_width * 1.1^delta,
         minimum_width,
         1.0,
     )
-
-    set_perturbation_width_value!(state, new_width)
 
     return true
 end
@@ -433,17 +379,8 @@ function change_perturbation_height_from_scroll!(
     iszero(direction) &&
         return false
 
-    current_height = textbox_float_value(
-        state.height_textbox;
-        default = 0.0,
-    )
-
-    if !isfinite(current_height)
-        current_height = 0.0
-    end
-
-    new_height = current_height + direction
-    set_perturbation_height_value!(state, new_height)
+    current_height = isfinite(state.height[]) ? state.height[] : 0.0
+    state.height[] = current_height + direction
 
     return true
 end
@@ -758,73 +695,15 @@ function register_mouse_perturbation_handlers!(
 end
 
 
-function build_perturbation_controls!(
-    grid::GridLayout,
-    app::AppState;
+function create_perturbation_state!(
+    app::AppState,
     segment_axes::Vector{Vector{Axis}},
 )
-    random_mode = Observable(true)
-    absolute_mode = Observable(false)
-    initial_width = 0.05
-
-    color_inactive = :lightgray
-    color_active = :skyblue
-
-    random_button = Button(
-        grid[1, 1],
-        label = lift(random_mode) do is_random
-            is_random ? "Random" : "Constant"
-        end,
-        buttoncolor = lift(random_mode) do is_random
-            is_random ? color_active : color_inactive
-        end,
-        tellwidth = false,
-    )
-
-    mode_button = Button(
-        grid[1, 2],
-        label = lift(absolute_mode) do is_absolute
-            is_absolute ? "Absolute" : "Relative"
-        end,
-        buttoncolor = lift(absolute_mode) do is_absolute
-            is_absolute ? color_active : color_inactive
-        end,
-        tellwidth = false,
-    )
-
-    width_label = Label(
-        grid[1, 3],
-        "Width",
-        tellwidth = false,
-    )
-
-    width_textbox = Textbox(
-        grid[1, 4],
-        stored_string = @sprintf("%.2f", initial_width),
-        width = 70,
-        tellwidth = false,
-    )
-
-    height_label = Label(
-        grid[1, 5],
-        "Height",
-        tellwidth = false,
-    )
-
-    height_textbox = Textbox(
-        grid[1, 6],
-        stored_string = "0.0",
-        width = 70,
-        tellwidth = false,
-    )
-
     state = PerturbationControlState(
-        random_mode,
-        absolute_mode,
-        width_textbox,
-        height_textbox,
-        initial_width,
-        false,
+        Observable(true),
+        Observable(false),
+        Observable(0.05),
+        Observable(0.0),
         false,
         0,
         0,
@@ -834,98 +713,33 @@ function build_perturbation_controls!(
         false,
     )
 
-    function update_height_visibility!()
-        is_visible = app.show_embedded_perturbation_controls && absolute_mode[]
-
-        for block in (height_label, height_textbox)
-            block.blockscene.visible[] = is_visible
-
-            if hasproperty(block, :scene) && isdefined(block, :scene)
-                block.scene.visible[] = is_visible
-            end
-        end
-
+    on(state.random_mode) do _
+        update_perturbation_preview_from_mouse!(app, state)
         return nothing
     end
 
-    function update_preview_from_current_mouse!()
-        update_perturbation_preview_from_mouse!(
-            app,
-            state,
-        )
-
-        return nothing
-    end
-
-    on(random_button.clicks) do _
-        random_mode[] = !random_mode[]
-        return nothing
-    end
-
-    on(random_mode) do _
-        update_preview_from_current_mouse!()
-        return nothing
-    end
-
-    on(mode_button.clicks) do _
-        absolute_mode[] = !absolute_mode[]
-        return nothing
-    end
-
-    on(absolute_mode) do _
+    on(state.absolute_mode) do absolute_mode
         restore_relative_axis_from_solution!(
             app,
             state;
-            force = !absolute_mode[],
+            force = !absolute_mode,
         )
-
-        update_height_visibility!()
-        update_preview_from_current_mouse!()
+        update_perturbation_preview_from_mouse!(app, state)
         return nothing
     end
 
-    on(width_textbox.stored_string) do value
-        if !state.updating_width_textbox
-            parsed_width = tryparse(Float64, value)
-            state.width_value = parsed_width === nothing ? NaN : parsed_width
-        end
-
-        update_preview_from_current_mouse!()
+    on(state.width) do _
+        update_perturbation_preview_from_mouse!(app, state)
         return nothing
     end
 
-    on(height_textbox.stored_string) do _
-        absolute_mode[] && update_preview_from_current_mouse!()
+    on(state.height) do _
+        state.absolute_mode[] && update_perturbation_preview_from_mouse!(app, state)
         return nothing
     end
 
-    update_height_visibility!()
+    register_mouse_perturbation_handlers!(app, segment_axes, state)
+    register_perturbation_scroll_handlers!(app, segment_axes, state)
 
-    register_mouse_perturbation_handlers!(
-        app,
-        segment_axes,
-        state,
-    )
-
-    ui_items = Any[
-        random_button,
-        mode_button,
-        width_label,
-        width_textbox,
-        height_label,
-        height_textbox,
-    ]
-
-    colgap!(grid, 10)
-    colsize!(grid, 1, Fixed(110))
-    colsize!(grid, 2, Fixed(110))
-    colsize!(grid, 3, Fixed(55))
-    colsize!(grid, 4, Fixed(80))
-    colsize!(grid, 5, Fixed(55))
-    colsize!(grid, 6, Fixed(80))
-
-    return (;
-        ui_items,
-        state,
-    )
+    return state
 end

@@ -82,6 +82,8 @@ mutable struct QMLBindings
     equation_values_visible::Observable{Bool}
     domain_resolution::Observable{Int}
     main_window_visible::Observable{Bool}
+    spatial_profile_sets_json::Observable{String}
+    spatial_profile_set_index::Observable{Int}
 end
 
 
@@ -232,6 +234,19 @@ function model_parameters_json(model::RD.ModelSpec, params::AbstractDict{Symbol}
 end
 
 
+function spatial_profile_sets_json(model::RD.ModelSpec)
+    return json_string_array(first.(model.spatial_profile_sets))
+end
+
+
+function active_spatial_profile_set_index(sim::RD.SimulationState)
+    profile_sets = sim.model.spatial_profile_sets
+    isempty(profile_sets) && return 0
+
+    return RD._active_spatial_profile_set_index(sim.params, profile_sets)
+end
+
+
 function empty_series_controller()
     return SeriesController(
         RD.SeriesSettings(),
@@ -304,14 +319,6 @@ function series_preset_by_key(model_key::AbstractString, preset_key::AbstractStr
         SERIES_PRESETS,
     )
     return index === nothing ? nothing : SERIES_PRESETS[index]
-end
-
-
-function series_preset_position(position::Symbol, displayed_length::Float64)
-    position == :left && return 0.0
-    position == :center && return displayed_length / 2
-    position == :right && return displayed_length
-    error("Unsupported Series preset position: $position")
 end
 
 
@@ -743,6 +750,11 @@ function update_model_bindings!(controller::QMLController)
         model_parameters_json(model, controller.app.sim.params),
     )
     set_if_changed!(bindings.variables_json, json_string_array(model.varnames))
+    set_if_changed!(bindings.spatial_profile_sets_json, spatial_profile_sets_json(model))
+    set_if_changed!(
+        bindings.spatial_profile_set_index,
+        active_spatial_profile_set_index(controller.app.sim),
+    )
     set_if_changed!(
         bindings.equation_images_json,
         json_string_array(get(controller.equation_images_by_model, active_key, String[])),
@@ -806,6 +818,10 @@ function refresh_qml_state!(controller::QMLController)
     set_if_changed!(
         controller.bindings.checkpoint_available,
         controller.app.saved_state[] !== nothing,
+    )
+    set_if_changed!(
+        controller.bindings.spatial_profile_set_index,
+        active_spatial_profile_set_index(controller.app.sim),
     )
     update_partition_bindings!(controller)
 
@@ -1478,7 +1494,7 @@ function select_series_preset!(controller::QMLController, preset_key_value)
                 id = series.next_perturbation_id,
                 segment = selected_segment,
                 variable = variable,
-                position = series_preset_position(definition.position, displayed_length),
+                position = definition.position_fraction * displayed_length,
                 width_min = definition.width_min_fraction * displayed_length,
                 width_max = definition.width_max_fraction * displayed_length,
                 height_min = definition.height_min,
@@ -1731,7 +1747,6 @@ function capture_series_base!(controller::QMLController)
     lock(app.simlock)
     try
         app.generation[] += 1
-        RD.clear_snapshot_buffer!(app.snapshot_buffer)
         generation = app.generation[]
 
         for segment in eachindex(app.simulations)
@@ -1839,7 +1854,9 @@ function clear_series_results!(controller::QMLController)
 
     lock(series.lock)
     try
-        reset_series_results_locked!(series, RD.SeriesSegmentTemplate[])
+        # Keep one (empty) result entry per panel, so the series window keeps
+        # showing empty charts instead of hiding them.
+        reset_series_results_locked!(series, series.templates)
         series.results_panel = 1
         fill!(series.latest_residuals, NaN)
         series.residual_revision += 1
@@ -2211,6 +2228,7 @@ function reset_simulation!(controller::QMLController)
             worker_sleep_time = controller.worker_sleep_time,
         )
         controller.selected_segment = 1
+        update_model_bindings!(controller)
         update_partition_bindings!(controller; reset_index = true)
         clear_series_perturbations!(controller)
     end
@@ -2240,6 +2258,7 @@ function restore_saved_state!(controller::QMLController)
             controller.app.initial_boundary_condition,
         )
         controller.selected_segment = 1
+        update_model_bindings!(controller)
         update_partition_bindings!(controller; reset_index = true)
         clear_series_perturbations!(controller)
     end
@@ -2378,6 +2397,21 @@ function set_model_parameter_from_qml!(controller::QMLController, name, value_te
         clear_series_results!(controller)
         update_model_bindings!(controller)
         refresh_current_equation_image!(controller)
+    end
+end
+
+
+function select_spatial_profile_set!(controller::QMLController, one_based_index)
+    return guarded_action(controller, "Spatial profile change failed") do
+        controller.series.running[] && error("Stop the Series run before changing the spatial profile.")
+        RD.set_active_spatial_profile_set_app!(
+            controller.app,
+            Int(one_based_index);
+            steps_per_frame = controller.steps_per_frame,
+            worker_sleep_time = controller.worker_sleep_time,
+        )
+        clear_series_results!(controller)
+        update_model_bindings!(controller)
     end
 end
 
@@ -2694,6 +2728,13 @@ end
 
 
 function register_qml_functions!(controller::QMLController)
+    # Callbacks whose functions do not report their own errors. An exception
+    # escaping a QML callback terminates the application, so it is shown as a
+    # message instead. Functions that already use guarded_action are not
+    # wrapped again: the outer success would clear the inner error message.
+    guarded(action, context) =
+        (arguments...) -> guarded_action(() -> action(arguments...), controller, context)
+
     QML.qmlfunction("refreshUI", () -> refresh_qml_state!(controller))
     QML.qmlfunction("toggleRunning", () -> toggle_running!(controller))
     QML.qmlfunction("saveCurrentState", () -> save_current_state!(controller))
@@ -2736,10 +2777,23 @@ function register_qml_functions!(controller::QMLController)
         "setDomainExponent",
         value -> set_domain_exponent!(controller, value),
     )
-    QML.qmlfunction("setDomainResolution", value -> set_domain_resolution!(controller, value))
+    QML.qmlfunction(
+        "setDomainResolution",
+        guarded(value -> set_domain_resolution!(controller, value), "Domain-slider change failed"),
+    )
     QML.qmlfunction(
         "setModelParameter",
         (name, value) -> set_model_parameter_from_qml!(controller, name, value),
+    )
+    QML.qmlfunction(
+        "selectSpatialProfileSet",
+        index -> begin
+            one_based_index = Int(index)
+            enqueue_graphics_action!(
+                controller,
+                () -> select_spatial_profile_set!(controller, one_based_index),
+            )
+        end,
     )
     QML.qmlfunction(
         "setEquationValuesVisible",
@@ -2808,16 +2862,34 @@ function register_qml_functions!(controller::QMLController)
         value -> set_perturbation_height!(controller, value),
     )
     QML.qmlfunction("setSeriesMode", value -> set_series_mode!(controller, value))
-    QML.qmlfunction("selectSeriesSegment", value -> select_series_segment!(controller, value))
-    QML.qmlfunction("selectSeriesVariable", value -> select_series_variable!(controller, value))
+    QML.qmlfunction(
+        "selectSeriesSegment",
+        guarded(value -> select_series_segment!(controller, value), "Series panel selection failed"),
+    )
+    QML.qmlfunction(
+        "selectSeriesVariable",
+        guarded(value -> select_series_variable!(controller, value), "Series variable selection failed"),
+    )
     QML.qmlfunction("setSeriesPosition", value -> set_series_position!(controller, value))
     QML.qmlfunction("selectSeriesPreset", value -> select_series_preset!(controller, value))
-    QML.qmlfunction("addSeriesPerturbation", () -> add_series_perturbation!(controller))
-    QML.qmlfunction("selectSeriesPerturbation", value -> select_series_perturbation!(controller, value))
-    QML.qmlfunction("deleteSeriesPerturbation", value -> delete_series_perturbation!(controller, value))
+    QML.qmlfunction(
+        "addSeriesPerturbation",
+        guarded(() -> add_series_perturbation!(controller), "Adding a perturbation failed"),
+    )
+    QML.qmlfunction(
+        "selectSeriesPerturbation",
+        guarded(value -> select_series_perturbation!(controller, value), "Perturbation selection failed"),
+    )
+    QML.qmlfunction(
+        "deleteSeriesPerturbation",
+        guarded(value -> delete_series_perturbation!(controller, value), "Deleting a perturbation failed"),
+    )
     QML.qmlfunction(
         "updateSeriesPerturbation",
-        (id, field, value) -> update_series_perturbation!(controller, id, field, value),
+        guarded(
+            (id, field, value) -> update_series_perturbation!(controller, id, field, value),
+            "Perturbation change failed",
+        ),
     )
     QML.qmlfunction(
         "setSeriesRunCount",
@@ -2847,19 +2919,25 @@ function register_qml_functions!(controller::QMLController)
         "setSeriesDtmax",
         value -> set_series_float_setting!(controller, :dtmax, value),
     )
-    QML.qmlfunction("setSeriesSeed", value -> set_series_seed!(controller, value))
+    QML.qmlfunction(
+        "setSeriesSeed",
+        guarded(value -> set_series_seed!(controller, value), "Series setting change failed"),
+    )
     QML.qmlfunction(
         "setSeriesHeadVariable",
         value -> set_series_integer_setting!(controller, :head_variable, value),
     )
     QML.qmlfunction(
         "setSeriesLivePreview",
-        value -> set_series_live_preview!(controller, value),
+        guarded(value -> set_series_live_preview!(controller, value), "Series setting change failed"),
     )
-    QML.qmlfunction("startSeries", () -> start_series!(controller))
-    QML.qmlfunction("runOneSeries", () -> run_one_series!(controller))
-    QML.qmlfunction("setSeriesResultsPanel", value -> set_series_results_panel!(controller, value))
-    QML.qmlfunction("stopSeries", () -> stop_series!(controller))
+    QML.qmlfunction("startSeries", guarded(() -> start_series!(controller), "Series start failed"))
+    QML.qmlfunction("runOneSeries", guarded(() -> run_one_series!(controller), "Run one failed"))
+    QML.qmlfunction(
+        "setSeriesResultsPanel",
+        guarded(value -> set_series_results_panel!(controller, value), "Results panel change failed"),
+    )
+    QML.qmlfunction("stopSeries", guarded(() -> stop_series!(controller), "Series stop failed"))
     QML.qmlfunction("requestClose", () -> request_close!(controller))
 
     return nothing
@@ -2899,6 +2977,8 @@ function qml_property_map(
         "equationValuesVisible" => bindings.equation_values_visible,
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
+        "spatialProfileSetsJson" => bindings.spatial_profile_sets_json,
+        "spatialProfileSetIndex" => bindings.spatial_profile_set_index,
         "modelCatalogJson" => Observable(catalog_json),
         "message" => bindings.message,
         "graphicsBusy" => controller.graphics_busy,
@@ -3015,8 +3095,6 @@ function create_qml_controller(;
         steps,
         Threads.Atomic{Bool}(false),
         Ref{Union{Nothing, Task}}(nothing),
-        Ref{Union{Nothing, Task}}(nothing),
-        RD.empty_snapshot_buffer(),
         Threads.Atomic{Int}(0),
         ReentrantLock(),
         RD.SegmentRuntime[RD.empty_segment_runtime()],
@@ -3024,8 +3102,8 @@ function create_qml_controller(;
         Ref{Union{Nothing, Task}}(nothing),
         Observable("Synchronized"),
         Ref{Union{Nothing, RD.SavedSimulationState}}(nothing),
-        false,
         Threads.Atomic{Bool}(true),
+        Dict{Symbol, Float64}(),
     )
     app.plot_panel = RD.build_plot_panel!(plot_grid, app; title_obs = title)
     report_startup_stage("Create application and plots", stage_started_ns)
@@ -3079,6 +3157,8 @@ function create_qml_controller(;
         Observable(false),
         Observable(16),
         Observable(false),
+        Observable(spatial_profile_sets_json(first_model)),
+        Observable(active_spatial_profile_set_index(simulation)),
     )
     controller = QMLController(
         app,

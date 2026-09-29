@@ -1,4 +1,4 @@
-# models/GiererMainhardt/GiererMainhardt.jl
+# Models/GiererMainhardt/no_k/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system

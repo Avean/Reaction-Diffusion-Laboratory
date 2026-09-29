@@ -5,11 +5,6 @@
 # ============================================================
 
 
-function total_partition_points(app::AppState)
-    return sum(sim.N for sim in app.simulations)
-end
-
-
 function make_partition_snapshot(
     simulations::Vector{SimulationState},
     generation::Int,
@@ -34,60 +29,6 @@ function partition_snapshot_from_segments(
         minimum(snapshot.dtmax for snapshot in snapshots),
         maximum(snapshot.steps for snapshot in snapshots),
     )
-end
-
-
-function step_partition_synchronized!(
-    simulations::Vector{SimulationState},
-    nsteps::Int,
-)
-    isempty(simulations) && return nothing
-    nsteps >= 1 || return nothing
-
-    if length(simulations) == 1
-        step_simulation!(first(simulations), nsteps)
-        return nothing
-    end
-
-    for _ in 1:nsteps
-        proposed_dts = Float64[]
-
-        for sim in simulations
-            dt = abs(current_internal_dt(sim))
-
-            if isfinite(dt) && dt > 0
-                push!(proposed_dts, min(dt, current_dtmax(sim)))
-            end
-        end
-
-        isempty(proposed_dts) &&
-            error("No valid time step is available for the partition.")
-
-        common_dt = minimum(proposed_dts)
-
-        for sim in simulations
-            step!(sim.integrator_ref[], common_dt, true)
-            sim.step_counter[] += 1
-            shift_time_to_zero_if_needed!(sim)
-        end
-    end
-
-    return nothing
-end
-
-
-function partition_base_length(app::AppState)
-    first_sim = first(app.simulations)
-    last_sim = last(app.simulations)
-    xmin = first(first_sim.x)
-    xmax = last(last_sim.x)
-
-    if length(app.simulations) == 1 &&
-       first_sim.boundary_condition == :periodic
-        return (xmax - xmin) + first_sim.dx
-    end
-
-    return xmax - xmin
 end
 
 
@@ -164,53 +105,6 @@ function clear_spatial_profile_overrides!(sim::SimulationState)
     end
 
     return nothing
-end
-
-
-function slice_partition_params(
-    params::AbstractDict{Symbol},
-    indices,
-    parent_N::Int,
-)
-    child_params = Dict{Symbol, Any}(params)
-
-    for (key, value) in params
-        _is_spatial_profile_override_key(key) || continue
-        profile_values = Float64.(collect(value))
-        length(profile_values) == parent_N ||
-            error("Spatial profile override has wrong length before split.")
-        child_params[key] = copy(profile_values[indices])
-    end
-
-    return child_params
-end
-
-
-function merge_partition_params(
-    left::SimulationState,
-    right::SimulationState,
-)
-    merged_params = Dict{Symbol, Any}(left.params)
-    override_keys = union(
-        filter(_is_spatial_profile_override_key, keys(left.params)),
-        filter(_is_spatial_profile_override_key, keys(right.params)),
-    )
-
-    for key in override_keys
-        haskey(left.params, key) && haskey(right.params, key) ||
-            error("Both merged segments must contain the same spatial profile overrides.")
-
-        left_values = Float64.(collect(left.params[key]))
-        right_values = Float64.(collect(right.params[key]))
-        length(left_values) == left.N ||
-            error("Left spatial profile override has wrong length before merge.")
-        length(right_values) == right.N ||
-            error("Right spatial profile override has wrong length before merge.")
-
-        merged_params[key] = vcat(left_values, right_values)
-    end
-
-    return merged_params
 end
 
 

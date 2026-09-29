@@ -6,7 +6,7 @@ v = 0.0
 
 [[perturbations]]
 variable = "u"
-position = "left"
+position = 0.0
 width_min_fraction = 0.13
 width_max_fraction = 0.25
 height_min = 1.0
@@ -14,7 +14,7 @@ height_max = 2.0
 
 [[perturbations]]
 variable = "u"
-position = "center"
+position = 0.5
 width_min_fraction = 0.13
 width_max_fraction = 0.25
 height_min = 1.0
@@ -22,7 +22,7 @@ height_max = 2.0
 
 [[perturbations]]
 variable = "u"
-position = "right"
+position = 1.0
 width_min_fraction = 0.13
 width_max_fraction = 0.25
 height_min = 1.0

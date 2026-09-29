@@ -54,15 +54,6 @@ function model_registry_key(
 end
 
 
-function model_file_labels(model_dir::AbstractString)
-    # Return display labels for model files.
-
-    files = model_files(model_dir)
-
-    return [model_registry_key(model_dir, path) for path in files]
-end
-
-
 function load_model_from_file_at_startup(path::AbstractString)::ModelSpec
     # Load one model file.
     #
@@ -81,7 +72,7 @@ function load_model_from_file_at_startup(path::AbstractString)::ModelSpec
 
         The file should end with something like:
 
-            ModelSpec(
+            RDModel(
                 id = :my_model,
                 ...
             )
@@ -175,32 +166,6 @@ function model_family_name(key::AbstractString)
 end
 
 
-function model_variant_name(key::AbstractString)
-    return words_from_identifier(basename(String(key)))
-end
-
-
-function model_menu_label(key::AbstractString, model::ModelSpec)
-    # Families already have their own selector, so avoid repeating their name
-    # in every entry of the concrete-model selector.
-    label = model.display_name
-    parts = split(label, '—'; limit = 2)
-    length(parts) == 2 && (label = strip(parts[2]))
-
-    # Some legacy display names use a plain prefix rather than an em dash,
-    # e.g. "MathBio basic".  Strip that family prefix only when it is a whole
-    # first word, so model names themselves stay intact.
-    family_compact = lowercase(replace(model_family_name(key), r"[\s_-]" => ""))
-    words = split(label)
-    if !isempty(words) &&
-       lowercase(replace(first(words), r"[\s_-]" => "")) == family_compact
-        label = join(words[2:end], " ")
-    end
-
-    return isempty(label) ? model.display_name : label
-end
-
-
 function model_menu_catalog(registry::Dict{String, ModelSpec})
     families = Dict{String, Vector{NamedTuple}}()
 
@@ -208,7 +173,7 @@ function model_menu_catalog(registry::Dict{String, ModelSpec})
         family = model_family_name(key)
         entry = (
             key = key,
-            label = model_menu_label(key, registry[key]),
+            label = registry[key].display_name,
         )
         push!(get!(families, family, NamedTuple[]), entry)
     end

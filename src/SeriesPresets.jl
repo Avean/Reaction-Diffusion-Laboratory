@@ -6,7 +6,8 @@
 
 struct SeriesPresetPerturbation
     variable_name::String
-    position::Symbol
+    position_fraction::Float64
+    # Perturbation centre as a fraction of the panel length, from 0 to 1.
     width_min_fraction::Float64
     width_max_fraction::Float64
     height_min::Float64
@@ -39,10 +40,10 @@ function _series_preset_number(table, field::String, path::AbstractString)
 end
 
 
-function _series_preset_position(value::AbstractString, path::AbstractString)
-    position = Symbol(lowercase(strip(value)))
-    position in (:left, :center, :right) ||
-        error("Preset $path position must be left, center or right.")
+function _series_preset_position(table, path::AbstractString)
+    position = _series_preset_number(table, "position", path)
+    0.0 <= position <= 1.0 ||
+        error("Preset $path position must be a fraction of the panel length between 0 and 1, got $position.")
     return position
 end
 
@@ -69,7 +70,7 @@ function load_series_preset(path::AbstractString, model_key::AbstractString)
     for entry in raw_perturbations
         entry isa AbstractDict || error("Preset $path contains an invalid perturbation.")
         variable_name = _series_preset_string(entry, "variable", path)
-        position = _series_preset_position(_series_preset_string(entry, "position", path), path)
+        position = _series_preset_position(entry, path)
         width_min = _series_preset_number(entry, "width_min_fraction", path)
         width_max = _series_preset_number(entry, "width_max_fraction", path)
         height_min = _series_preset_number(entry, "height_min", path)

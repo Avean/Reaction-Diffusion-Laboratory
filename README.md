@@ -37,7 +37,24 @@ automatically at startup. The repository ships with:
 | Stem cells | quiescent / active stem-cell populations |
 
 `TOML` files next to a `model.jl` are presets for Series mode (initial
-values and perturbations).
+values and perturbations). Each `[[perturbations]]` entry adds one
+perturbation, so a preset can define any number of them:
+
+```toml
+name = "u: three bumps"
+
+[initial_values]
+u = 0.0
+v = 0.0
+
+[[perturbations]]
+variable = "u"
+position = 0.25            # centre, as a fraction of the panel length (0 to 1)
+width_min_fraction = 0.13  # width range, as fractions of the panel length
+width_max_fraction = 0.25
+height_min = 1.0
+height_max = 2.0
+```
 
 ### Adding a model
 
@@ -71,6 +88,8 @@ RDModel(
 Create `Models/<Family>/<my_model>/model.jl` and restart the application; the
 model appears in the model menu. Spatial profiles (e.g. a source density
 `ρ(x)`) can be declared with `spatial_profiles`; see the existing models.
+When a model declares several profile sets, the active one is chosen in the
+*Spatial profile* section of the model drawer.
 
 ## Installation
 

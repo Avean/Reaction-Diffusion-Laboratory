@@ -26,7 +26,8 @@ ApplicationWindow {
     property var modelCatalog: JSON.parse(ui.modelCatalogJson)
     property var variables: JSON.parse(ui.variablesJson)
     property var equationImages: JSON.parse(ui.equationImagesJson)
-    property var modelParameters: JSON.parse(ui.modelParametersJson)
+    property string modelParametersJson: ui.modelParametersJson
+    property var spatialProfileSets: JSON.parse(ui.spatialProfileSetsJson)
     property bool textEditorFocused: false
     property int selectedFamilyIndex: 0
     property int activeFamilyIndex: findFamilyIndex(ui.activeModelKey)
@@ -34,6 +35,39 @@ ApplicationWindow {
     // In series mode every main-window control except the Series toggle is
     // disabled; the series window owns all interaction.
     property bool controlsEnabled: !ui.graphicsBusy && !ui.seriesMode
+
+    // The parameter fields are updated in place: rebuilding them after every
+    // edit would destroy the field being edited, losing its focus and
+    // breaking Tab navigation between the fields.
+    ListModel {
+        id: parameterModel
+    }
+
+    function syncParameterModel() {
+        const items = JSON.parse(modelParametersJson)
+        let sameParameters = items.length === parameterModel.count
+        for (let index = 0; sameParameters && index < items.length; ++index)
+            sameParameters = parameterModel.get(index).key === items[index].key
+
+        if (!sameParameters)
+            parameterModel.clear()
+
+        for (let index = 0; index < items.length; ++index) {
+            const item = items[index]
+            const entry = {
+                key: item.key,
+                label: item.label,
+                value: item.value,
+                displayText: item.display
+            }
+            if (sameParameters)
+                parameterModel.set(index, entry)
+            else
+                parameterModel.append(entry)
+        }
+    }
+
+    onModelParametersJsonChanged: syncParameterModel()
 
     ButtonGroup {
         id: splitSegmentButtonGroup
@@ -124,7 +158,10 @@ ApplicationWindow {
 
     onActiveFamilyIndexChanged: selectedFamilyIndex = activeFamilyIndex
 
-    Component.onCompleted: selectedFamilyIndex = activeFamilyIndex
+    Component.onCompleted: {
+        selectedFamilyIndex = activeFamilyIndex
+        syncParameterModel()
+    }
 
     palette.window: "#eef1f5"
     palette.windowText: "#20252d"
@@ -1078,6 +1115,22 @@ ApplicationWindow {
                         }
 
                         ControlSection {
+                            title: "Spatial profile"
+                            visible: window.spatialProfileSets.length > 0
+                            Layout.leftMargin: 9
+                            Layout.rightMargin: 9
+
+                            ComboBox {
+                                Layout.fillWidth: true
+                                enabled: window.controlsEnabled
+                                model: window.spatialProfileSets
+                                // The Julia index is one-based.
+                                currentIndex: ui.spatialProfileSetIndex - 1
+                                onActivated: Julia.selectSpatialProfileSet(currentIndex + 1)
+                            }
+                        }
+
+                        ControlSection {
                             title: "Model parameters"
                             expanded: false
                             Layout.leftMargin: 9
@@ -1088,11 +1141,14 @@ ApplicationWindow {
                                 spacing: 6
 
                                 Repeater {
-                                    model: window.modelParameters
+                                    model: parameterModel
 
                                     RowLayout {
-                                        required property var modelData
-                                        property var parameter: modelData
+                                        id: parameter
+                                        required property string key
+                                        required property string label
+                                        required property real value
+                                        required property string displayText
                                         Layout.fillWidth: true
 
                                         Label {
@@ -1119,14 +1175,14 @@ ApplicationWindow {
                                             selectByMouse: true
                                             enabled: window.controlsEnabled
                                             validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                            text: parameter.display
+                                            text: parameter.displayText
                                             onTextEdited: edited = true
                                             onEditingFinished: commit()
                                             onActiveFocusChanged: {
                                                 if (!activeFocus)
                                                     commit()
                                                 edited = false
-                                                text = activeFocus ? String(parameter.value) : parameter.display
+                                                text = activeFocus ? String(parameter.value) : parameter.displayText
                                             }
                                         }
                                     }

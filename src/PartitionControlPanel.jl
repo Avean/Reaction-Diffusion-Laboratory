@@ -114,7 +114,6 @@ function split_domain_segment_app!(
         app.generation[] += 1
         stop_and_settle_partition_workers!(app)
         domain_length_scale = app.plot_panel.domain_length_scale
-        clear_snapshot_buffer!(app.snapshot_buffer)
         split_domain_segment!(app, segment, left_count)
 
         rebuild_plot_panel_for_partition!(
@@ -155,7 +154,6 @@ function merge_domain_segments_app!(
             allow_cancel = false,
         )
 
-        clear_snapshot_buffer!(app.snapshot_buffer)
         merge_domain_segments!(app, left_segment)
 
         rebuild_plot_panel_for_partition!(
@@ -211,7 +209,6 @@ function swap_adjacent_domain_segments_app!(
         app.generation[] += 1
         stop_and_settle_partition_workers!(app)
         domain_length_scale = app.plot_panel.domain_length_scale
-        clear_snapshot_buffer!(app.snapshot_buffer)
         swap_adjacent_domain_segments!(app, left_segment)
         finalize_partition_topology_change!(
             app,
@@ -254,7 +251,6 @@ function delete_domain_segment_app!(
         app.generation[] += 1
         stop_and_settle_partition_workers!(app)
         domain_length_scale = app.plot_panel.domain_length_scale
-        clear_snapshot_buffer!(app.snapshot_buffer)
         delete_domain_segment!(app, segment)
         finalize_partition_topology_change!(
             app,

@@ -1,4 +1,4 @@
-# Models/Mechanochemical/MechanochemicalKernel3.jl
+# Models/Mechanochemical/normalized_ring_kernel/model.jl
 
 # ============================================================
 # Mechanochemical model with a normalized ring kernel

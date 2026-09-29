@@ -108,7 +108,7 @@ function validate_series_perturbation!(
         error("Perturbation widths must be finite.")
     0.0 < perturbation.width_min <= perturbation.width_max ||
         error("Perturbation width minimum must be positive and not exceed its maximum.")
-    perturbation.width_max <= simulation_domain_length(sim) + eps(Float64) ||
+    perturbation.width_max <= segment_physical_length(sim) + eps(Float64) ||
         error("Perturbation width exceeds the selected panel length.")
     isfinite(perturbation.height_min) && isfinite(perturbation.height_max) ||
         error("Perturbation heights must be finite.")

@@ -1,4 +1,4 @@
-# models/GiererMainhardt/GiererMainhardtOscilations.jl
+# Models/GiererMainhardt/oscillations/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system

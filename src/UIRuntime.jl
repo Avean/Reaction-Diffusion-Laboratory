@@ -307,40 +307,6 @@ function store_runtime_snapshots!(
 end
 
 
-function step_once_app!(app::AppState)
-    # Advance the simulation by one solver step.
-    #
-    # This is currently not attached to a button, but keeping it is useful
-    # for debugging.
-
-    if app.worker_running[]
-        return nothing
-    end
-
-    snapshots = SimulationSnapshot[]
-
-    for segment in eachindex(app.simulations)
-        runtime = app.segment_runtimes[segment]
-        lock(runtime.lock)
-
-        try
-            step_simulation!(app.simulations[segment])
-            push!(snapshots, make_snapshot(app.simulations[segment], app.generation[]))
-        finally
-            unlock(runtime.lock)
-        end
-    end
-
-    refresh_app_from_snapshot!(
-        app,
-        partition_snapshot_from_segments(snapshots, app.generation[]),
-    )
-    store_runtime_snapshots!(app, snapshots)
-
-    return nothing
-end
-
-
 function set_dtmax_app!(app::AppState, new_dtmax::Float64)
     if app.synchronization_running[]
         app.dtmax_obs[] = new_dtmax
@@ -433,6 +399,13 @@ function set_model_parameter_app!(
     parameter in public_model_parameter_names(app.sim.model) ||
         error("Unknown model parameter: $parameter")
 
+    # Diffusion parameters are remembered at domain scale 1; see
+    # AppState.parameter_overrides.
+    app.parameter_overrides[parameter] =
+        parameter in diffusion_parameter_names(app.sim.model) ?
+        value_float * app.plot_panel.domain_length_scale^2 :
+        value_float
+
     with_worker_paused!(
         app,
         () -> begin
@@ -478,7 +451,6 @@ function with_worker_paused!(
         unlock(app.simlock)
     end
 
-    clear_snapshot_buffer!(app.snapshot_buffer)
 
     if snapshot !== nothing
         store_runtime_snapshots!(app, snapshot.segments)
@@ -501,28 +473,6 @@ end
 # Reset and constant initial conditions
 # ============================================================
 
-function reset_initial_condition!(sim::SimulationState)
-    # Reset the solution to the model-defined initial condition.
-
-    U0 = zeros(Float64, sim.N, sim.model.nvars)
-
-    sim.model.initialize!(
-        U0,
-        sim.x,
-        sim.params,
-    )
-
-    ynew = copy(vec(U0))
-
-    restart_after_manual_change!(sim, ynew)
-
-    sim.time_offset[] = 0.0
-    sim.step_counter[] = 0
-
-    return nothing
-end
-
-
 function reset_initial_condition_app!(
     app::AppState;
     plot_grid::GridLayout,
@@ -537,15 +487,19 @@ function reset_initial_condition_app!(
 
     try
         app.generation[] += 1
-        clear_snapshot_buffer!(app.snapshot_buffer)
 
         app.sim = create_simulation_state(
             app.sim.model;
             N = app.initial_N,
             boundary_condition = app.initial_boundary_condition,
             dtmax = current_dtmax(app.sim),
+            parameters = app.parameter_overrides,
         )
-        set_diffusion_scale!(app.sim, domain_length_scale^2)
+        set_diffusion_scale!(
+            app.sim,
+            domain_length_scale^2;
+            parameter_overrides = app.parameter_overrides,
+        )
         app.simulations = SimulationState[app.sim]
         app.segment_runtimes = SegmentRuntime[empty_segment_runtime()]
 
@@ -628,6 +582,7 @@ function save_simulation_state!(app::AppState)
             app.dtmax_obs[],
             app.initial_N,
             app.initial_boundary_condition,
+            copy(app.parameter_overrides),
         )
     finally
         unlock(app.simlock)
@@ -663,7 +618,6 @@ function restore_saved_simulation_state_app!(
 
     try
         app.generation[] += 1
-        clear_snapshot_buffer!(app.snapshot_buffer)
         model = app.sim.model
 
         for segment in saved.segments
@@ -703,6 +657,7 @@ function restore_saved_simulation_state_app!(
         ]
         app.initial_N = saved.initial_N
         app.initial_boundary_condition = saved.initial_boundary_condition
+        app.parameter_overrides = copy(saved.parameter_overrides)
         app.dtmax_obs[] = saved.requested_dtmax
         app.running[] = false
         app.worker_running[] = false
@@ -864,52 +819,6 @@ function synchronize_domains_app!(app::AppState)
 end
 
 
-function set_constant_initial_condition!(
-    sim::SimulationState,
-    values::AbstractVector{<:Real},
-)
-    # Set every variable to a spatially constant value.
-
-    length(values) == sim.model.nvars ||
-        error("Expected $(sim.model.nvars) values, got $(length(values)).")
-
-    ynew = copy(sim.integrator_ref[].u)
-    U = reshape(ynew, sim.N, sim.model.nvars)
-
-    for j in 1:sim.model.nvars
-        U[:, j] .= Float64(values[j])
-    end
-
-    restart_after_manual_change!(sim, ynew)
-
-    sim.step_counter[] = 0
-
-    return nothing
-end
-
-
-function set_constant_initial_condition_app!(
-    app::AppState,
-    values::AbstractVector{<:Real};
-    steps_per_frame::Int = 5,
-    worker_sleep_time::Float64 = 0.001,
-)
-    with_worker_paused!(
-        app,
-        () -> begin
-            for sim in app.simulations
-                set_constant_initial_condition!(sim, values)
-            end
-        end;
-        restart_if_was_running = true,
-        steps_per_frame = steps_per_frame,
-        worker_sleep_time = worker_sleep_time,
-    )
-
-    return nothing
-end
-
-
 function set_single_constant_initial_condition!(
     sim::SimulationState;
     variable::Int,
@@ -972,34 +881,6 @@ end
 # Active spatial profile switching
 # ============================================================
 
-function set_active_spatial_profile_set!(
-    sim::SimulationState,
-    index::Int,
-)
-    # Change the active spatial profile set used by the model RHS.
-    #
-    # The active profile set index is stored as a hidden parameter.
-    # The model reaction can then use active spatial profiles as p.ρ, p.source, etc.
-
-    nsets = length(sim.model.spatial_profile_sets)
-
-    nsets > 0 ||
-        return nothing
-
-    index >= 1 && index <= nsets ||
-        error("Invalid spatial profile set index: $(index).")
-
-    sim.params[ACTIVE_SPATIAL_PROFILE_SET_PARAM] = Float64(index)
-
-    # The RHS has changed, so restart the integrator with the current state.
-    ynew = copy(sim.integrator_ref[].u)
-
-    restart_after_manual_change!(sim, ynew)
-
-    return nothing
-end
-
-
 function set_active_spatial_profile_set_app!(
     app::AppState,
     index::Int;
@@ -1009,7 +890,9 @@ function set_active_spatial_profile_set_app!(
     # UI-safe wrapper for changing the active spatial profile set.
     #
     # If the simulation is running, pause it, change the profile, restart the
-    # integrator, refresh the UI, and resume the worker.
+    # integrator, refresh the UI, and resume the worker. Reset keeps the choice.
+
+    app.parameter_overrides[ACTIVE_SPATIAL_PROFILE_SET_PARAM] = Float64(index)
 
     with_worker_paused!(
         app,
@@ -1029,6 +912,8 @@ function set_active_spatial_profile_set_app!(
                     copy(sim.integrator_ref[].u),
                 )
             end
+
+            app.plot_panel.refresh_spatial_profiles()
         end;
         restart_if_was_running = true,
         steps_per_frame = steps_per_frame,
@@ -1039,89 +924,9 @@ function set_active_spatial_profile_set_app!(
 end
 
 
-
-
 # ============================================================
 # Local perturbation application
 # ============================================================
-
-function apply_local_perturbation!(
-    sim::SimulationState;
-    variable::Int,
-    center::Float64,
-    width::Float64,
-    height::Float64,
-    random_mode::Bool,
-)
-    # Older direct local perturbation function.
-    #
-    # The current UI mainly uses apply_local_perturbation_increment!,
-    # because it lets the preview and the applied random perturbation match.
-
-    variable >= 1 && variable <= sim.model.nvars ||
-        error("Invalid variable index: $(variable).")
-
-    width > 0 ||
-        error("Perturbation width must be positive.")
-
-    ynew = copy(sim.integrator_ref[].u)
-    U = reshape(ynew, sim.N, sim.model.nvars)
-
-    mask = local_perturbation_mask(
-        sim.x,
-        center,
-        width;
-        boundary_condition = sim.boundary_condition,
-    )
-
-    if random_mode
-        for i in eachindex(mask)
-            if mask[i]
-                U[i, variable] += height * rand()
-            end
-        end
-    else
-        U[mask, variable] .+= height
-    end
-
-    restart_after_manual_change!(sim, ynew)
-
-    sim.step_counter[] = 0
-
-    return nothing
-end
-
-
-function apply_local_perturbation_app!(
-    app::AppState;
-    variable::Int,
-    center::Float64,
-    width::Float64,
-    height::Float64,
-    random_mode::Bool,
-    steps_per_frame::Int = 5,
-    worker_sleep_time::Float64 = 0.001,
-)
-    with_worker_paused!(
-        app,
-        () -> apply_local_perturbation!(
-            app.sim;
-            variable = variable,
-            center = center,
-            width = width,
-            height = height,
-            random_mode = random_mode,
-        );
-        restart_if_was_running = true,
-        steps_per_frame = steps_per_frame,
-        worker_sleep_time = worker_sleep_time,
-    )
-
-    clear_perturbation_preview!(app.plot_panel, 1, variable)
-
-    return nothing
-end
-
 
 function apply_local_perturbation_increment!(
     sim::SimulationState;
@@ -1204,8 +1009,8 @@ function switch_model_app!(
 
     try
         app.generation[] = app.generation[] + 1
-        clear_snapshot_buffer!(app.snapshot_buffer)
         clear_saved_simulation_state!(app)
+        empty!(app.parameter_overrides)
 
         selected_boundary_condition = isnothing(model.default_boundary_condition) ?
             boundary_condition : model.default_boundary_condition
@@ -1279,7 +1084,6 @@ function switch_boundary_condition_app!(
 
     try
         app.generation[] = app.generation[] + 1
-        clear_snapshot_buffer!(app.snapshot_buffer)
 
         current_model = app.sim.model
 
@@ -1290,6 +1094,7 @@ function switch_boundary_condition_app!(
             reltol = reltol,
             abstol = abstol,
             boundary_condition = boundary_condition,
+            parameters = app.parameter_overrides,
         )
         app.simulations = SimulationState[app.sim]
         app.segment_runtimes = SegmentRuntime[empty_segment_runtime()]
@@ -1316,105 +1121,96 @@ function switch_boundary_condition_app!(
     return nothing
 end
 
-    # ============================================================
-    # Diffusion rescaling
-    # ============================================================
 
-    function diffusion_parameter_names(model::ModelSpec)
-        names = Symbol[]
+# ============================================================
+# Diffusion rescaling
+# ============================================================
 
-        # Preferred convention:
-        #
-        #     variable u -> Du
-        #     variable v -> Dv
-        #     variable w -> Dw
-        #
-        for varname in model.varnames
-            key = Symbol("D", varname)
+function diffusion_parameter_names(model::ModelSpec)
+    names = Symbol[]
 
-            if haskey(model.default_params, key)
+    # Preferred convention:
+    #
+    #     variable u -> Du
+    #     variable v -> Dv
+    #     variable w -> Dw
+    #
+    for varname in model.varnames
+        key = Symbol("D", varname)
+
+        if haskey(model.default_params, key)
+            push!(names, key)
+        end
+    end
+
+    # Fallback: all parameters whose name starts with D.
+    if isempty(names)
+        for key in keys(model.default_params)
+            if startswith(String(key), "D")
                 push!(names, key)
             end
         end
-
-        # Fallback: all parameters whose name starts with D.
-        if isempty(names)
-            for key in keys(model.default_params)
-                if startswith(String(key), "D")
-                    push!(names, key)
-                end
-            end
-        end
-
-        return sort(unique(names); by = String)
     end
 
+    return sort(unique(names); by = String)
+end
 
-    function diffusion_scale_label_string(sim::SimulationState, scale::Float64)
-        names = diffusion_parameter_names(sim.model)
 
-        if isempty(names)
-            return "diffusion scale = $(@sprintf("%.2g", scale)) | no diffusion parameters found"
-        end
+function set_diffusion_scale!(
+    sim::SimulationState,
+    scale::Real;
+    parameter_overrides::AbstractDict{Symbol} = Dict{Symbol, Float64}(),
+)
+    scale_float = Float64(scale)
 
-        parts = String[]
+    isfinite(scale_float) || error("Diffusion scale must be finite.")
+    scale_float > 0.0 || error("Diffusion scale must be positive.")
 
-        for name in names
-            value = sim.params[name]
-            push!(parts, "$(name) = $(@sprintf("%.2e", value))")
-        end
+    names = diffusion_parameter_names(sim.model)
 
-        return "Length rescaled: $(@sprintf("%.2g", sqrt(scale))) "
+    for name in names
+        base_value = get(parameter_overrides, name, sim.model.default_params[name])
+        sim.params[name] = base_value / scale_float
     end
 
-
-    function set_diffusion_scale!(sim::SimulationState, scale::Real)
-        scale_float = Float64(scale)
-
-        isfinite(scale_float) || error("Diffusion scale must be finite.")
-        scale_float > 0.0 || error("Diffusion scale must be positive.")
-
-        names = diffusion_parameter_names(sim.model)
-
-        for name in names
-            base_value = sim.model.default_params[name]
-            sim.params[name] = base_value / scale_float
-        end
-
-        if haskey(sim.params, :domain_scale)
-            sim.params[:domain_scale] = sqrt(scale_float)
-        end
-
-        # Restart the integrator from the current solution, with changed parameters.
-        ynew = copy(sim.integrator_ref[].u)
-
-        restart_after_manual_change!(
-            sim,
-            ynew,
-        )
-
-        return nothing
+    if haskey(sim.params, :domain_scale)
+        sim.params[:domain_scale] = sqrt(scale_float)
     end
 
+    # Restart the integrator from the current solution, with changed parameters.
+    ynew = copy(sim.integrator_ref[].u)
 
-    function set_diffusion_scale_app!(
-        app::AppState,
-        scale::Real;
-        steps_per_frame::Int,
-        worker_sleep_time::Float64,
+    restart_after_manual_change!(
+        sim,
+        ynew,
     )
-        with_worker_paused!(
-            app,
-            () -> begin
-                for sim in app.simulations
-                    set_diffusion_scale!(sim, scale)
-                end
-                set_plot_domain_scale!(app.plot_panel, app, scale)
-            end;
-            restart_if_was_running = true,
-            steps_per_frame = steps_per_frame,
-            worker_sleep_time = worker_sleep_time,
-        )
 
-        return nothing
-    end
+    return nothing
+end
+
+
+function set_diffusion_scale_app!(
+    app::AppState,
+    scale::Real;
+    steps_per_frame::Int,
+    worker_sleep_time::Float64,
+)
+    with_worker_paused!(
+        app,
+        () -> begin
+            for sim in app.simulations
+                set_diffusion_scale!(
+                    sim,
+                    scale;
+                    parameter_overrides = app.parameter_overrides,
+                )
+            end
+            set_plot_domain_scale!(app.plot_panel, app, scale)
+        end;
+        restart_if_was_running = true,
+        steps_per_frame = steps_per_frame,
+        worker_sleep_time = worker_sleep_time,
+    )
+
+    return nothing
+end

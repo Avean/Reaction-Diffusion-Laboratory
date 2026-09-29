@@ -1,4 +1,4 @@
-# Models/Mechanochemical/MechanochemicalKernel.jl
+# Models/Mechanochemical/local_kernel/model.jl
 
 # ============================================================
 # Mechanochemical model with local normalization on the unit torus

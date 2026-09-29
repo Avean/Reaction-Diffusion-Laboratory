@@ -1,4 +1,4 @@
-# Models/Mechanochemical/MechanochemicalOscillations.jl
+# Models/Mechanochemical/oscillating_ramp/model.jl
 
 # ============================================================
 # Mechanochemical model with a periodically reset linear ramp

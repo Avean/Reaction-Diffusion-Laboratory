@@ -1,4 +1,4 @@
-# Models/Mechanochemical/MechanochemicalGlobal.jl
+# Models/Mechanochemical/global/model.jl
 
 # ============================================================
 # Mechanochemical model with global normalization on the unit torus
