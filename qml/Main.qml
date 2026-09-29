@@ -69,16 +69,6 @@ ApplicationWindow {
 
     onModelParametersJsonChanged: syncParameterModel()
 
-    ButtonGroup {
-        id: splitSegmentButtonGroup
-        exclusive: true
-    }
-
-    ButtonGroup {
-        id: steadySegmentButtonGroup
-        exclusive: true
-    }
-
     function findFamilyIndex(modelKey) {
         for (let familyIndex = 0; familyIndex < modelCatalog.length; ++familyIndex) {
             const models = modelCatalog[familyIndex].models
@@ -591,16 +581,16 @@ ApplicationWindow {
                         font.pixelSize: 16
                     }
 
-                    Button {
+                    PillButton {
                         text: (ui.randomMode ? "Random" : "Constant") + "  [Z]"
-                        highlighted: ui.randomMode
+                        checked: ui.randomMode
                         enabled: window.controlsEnabled
                         onClicked: Julia.toggleRandomMode()
                     }
 
-                    Button {
+                    PillButton {
                         text: (ui.absoluteMode ? "Absolute" : "Relative") + "  [X]"
-                        highlighted: ui.absoluteMode
+                        checked: ui.absoluteMode
                         enabled: window.controlsEnabled
                         onClicked: Julia.toggleAbsoluteMode()
                     }
@@ -692,15 +682,10 @@ ApplicationWindow {
                             font.pixelSize: 16
                         }
 
-                        Label {
-                            text: "Panel"
-                            font.bold: true
-                        }
-
                         ScrollView {
                             Layout.preferredWidth: Math.min(
-                                330,
-                                Math.max(48, ui.segmentCount * 50)
+                                window.width * 0.4,
+                                Math.max(90, ui.segmentCount * 86)
                             )
                             Layout.preferredHeight: 38
                             contentHeight: availableHeight
@@ -708,26 +693,12 @@ ApplicationWindow {
                             ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                             clip: true
 
-                            Row {
-                                spacing: 6
-
-                                Repeater {
-                                    model: ui.segmentCount
-
-                                    Button {
-                                        required property int index
-                                        width: 44
-                                        height: 32
-                                        text: String(index + 1)
-                                        checkable: true
-                                        checked: ui.selectedSegment === index + 1
-                                        highlighted: checked
-                                        focusPolicy: Qt.NoFocus
-                                        enabled: window.controlsEnabled
-                                        ButtonGroup.group: splitSegmentButtonGroup
-                                        onClicked: Julia.selectSplitSegment(index + 1)
-                                    }
-                                }
+                            PanelSelector {
+                                y: (parent.height - height) / 2
+                                count: ui.segmentCount
+                                current: ui.selectedSegment
+                                enabled: window.controlsEnabled
+                                onActivated: panel => Julia.selectSplitSegment(panel)
                             }
                         }
 
@@ -831,8 +802,9 @@ ApplicationWindow {
                                 Repeater {
                                     model: Math.max(0, ui.segmentCount - 1)
 
-                                    Button {
+                                    PillButton {
                                         required property int index
+                                        y: 4
                                         enabled: window.controlsEnabled
                                         text: (index + 1) + " | " + (index + 2)
                                         onClicked: Julia.mergeBoundary(index + 1)
@@ -860,8 +832,9 @@ ApplicationWindow {
                                 Repeater {
                                     model: Math.max(0, ui.segmentCount - 1)
 
-                                    Button {
+                                    PillButton {
                                         required property int index
+                                        y: 4
                                         enabled: window.controlsEnabled
                                         text: (index + 1) + " ↔ " + (index + 2)
                                         onClicked: Julia.swapBoundary(index + 1)
@@ -1269,8 +1242,8 @@ ApplicationWindow {
 
                     ScrollView {
                         Layout.preferredWidth: Math.min(
-                            330,
-                            Math.max(48, ui.segmentCount * 50)
+                            window.width * 0.4,
+                            Math.max(90, ui.segmentCount * 86)
                         )
                         Layout.preferredHeight: 38
                         contentHeight: availableHeight
@@ -1278,26 +1251,12 @@ ApplicationWindow {
                         ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                         clip: true
 
-                        Row {
-                            spacing: 6
-
-                            Repeater {
-                                model: ui.segmentCount
-
-                                Button {
-                                    required property int index
-                                    width: 44
-                                    height: 32
-                                    text: String(index + 1)
-                                    checkable: true
-                                    checked: ui.selectedSegment === index + 1
-                                    highlighted: checked
-                                    focusPolicy: Qt.NoFocus
-                                    enabled: window.controlsEnabled
-                                    ButtonGroup.group: steadySegmentButtonGroup
-                                    onClicked: Julia.selectSegment(index + 1)
-                                }
-                            }
+                        PanelSelector {
+                            y: (parent.height - height) / 2
+                            count: ui.segmentCount
+                            current: ui.selectedSegment
+                            enabled: window.controlsEnabled
+                            onActivated: panel => Julia.selectSegment(panel)
                         }
                     }
 

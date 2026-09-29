@@ -119,8 +119,13 @@ function load_series_presets(root::AbstractString)
 end
 
 
-function series_presets_json(presets::Vector{SeriesPresetDefinition}, model_key::AbstractString)
+function series_presets_json(
+    presets::Vector{SeriesPresetDefinition},
+    model_key::AbstractString;
+    include_custom::Bool = false,
+)
     entries = ["{\"key\":\"none\",\"name\":\"None\"}"]
+    include_custom && push!(entries, "{\"key\":\"custom\",\"name\":\"Custom\"}")
 
     for preset in presets
         preset.model_key == model_key || continue

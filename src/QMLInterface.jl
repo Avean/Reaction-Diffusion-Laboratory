@@ -75,7 +75,6 @@ mutable struct QMLBindings
     series_selected_preset::Observable{String}
     series_results_json::Observable{String}
     series_mode::Observable{Bool}
-    series_results_panel::Observable{Int}
     series_single_run::Observable{Bool}
     model_description::Observable{String}
     model_parameters_json::Observable{String}
@@ -84,6 +83,14 @@ mutable struct QMLBindings
     main_window_visible::Observable{Bool}
     spatial_profile_sets_json::Observable{String}
     spatial_profile_set_index::Observable{Int}
+end
+
+
+struct CustomPanelSet
+    # The perturbations and initial values of one panel after its last manual
+    # change, restored by choosing "Custom" in the preset selector.
+    perturbations::Vector{RD.SeriesPerturbation}
+    initial_values::Dict{String, Float64}
 end
 
 
@@ -123,14 +130,21 @@ mutable struct SeriesController
     patterns::Vector{Vector{Vector{Float64}}}
     # Final head-variable profile of every realization, per panel.
     pattern_converged::Vector{Vector{Bool}}
-    results_panel::Int
+    published_results_segment::Int
+    # The results JSON carries the patterns of the selected panel only, so it
+    # is published again when the selection changes.
     single_run::Bool
     configuration_groups::Vector{Vector{RD.HeadConfigurationGroup}}
     # Head configurations of the converged realizations, per panel.
     latest_residuals::Vector{Float64}
     residual_revision::Int
     published_residual_revision::Int
-    selected_preset_key::String
+    panel_presets::Vector{String}
+    # Per panel: a preset key, "none" or "custom".
+    panel_initial_values::Vector{Dict{String, Float64}}
+    # Per panel: initial values applied to the panel's series template.
+    custom_sets::Vector{Union{Nothing, CustomPanelSet}}
+    # Per panel: the remembered "Custom" perturbation set, if any.
 end
 
 
@@ -279,13 +293,15 @@ function empty_series_controller()
         :none,
         Vector{Vector{Float64}}[],
         Vector{Bool}[],
-        1,
+        0,
         false,
         Vector{RD.HeadConfigurationGroup}[],
         Float64[],
         0,
         -1,
-        "none",
+        String[],
+        Dict{String, Float64}[],
+        Union{Nothing, CustomPanelSet}[],
     )
 end
 
@@ -351,6 +367,83 @@ function apply_series_initial_values!(
 end
 
 
+function resize_panel_vector!(values::Vector, count::Int, default::Function)
+    while length(values) < count
+        push!(values, default())
+    end
+    length(values) > count && resize!(values, count)
+    return values
+end
+
+
+function ensure_panel_preset_state!(
+    controller::QMLController,
+    count::Int = length(controller.app.simulations),
+)
+    # The remap functions pass the panel count from before the topology change.
+    series = controller.series
+    resize_panel_vector!(series.panel_presets, count, () -> "none")
+    resize_panel_vector!(series.panel_initial_values, count, () -> Dict{String, Float64}())
+    resize_panel_vector!(series.custom_sets, count, () -> nothing)
+    return nothing
+end
+
+
+function clear_panel_preset_state!(controller::QMLController)
+    series = controller.series
+    empty!(series.panel_presets)
+    empty!(series.panel_initial_values)
+    empty!(series.custom_sets)
+    ensure_panel_preset_state!(controller)
+    return nothing
+end
+
+
+function apply_panel_initial_values!(controller::QMLController)
+    # Series templates are captured from the live solvers, which do not carry
+    # the initial values chosen per panel; apply them after every capture.
+    series = controller.series
+    ensure_panel_preset_state!(controller)
+
+    for (segment, template) in enumerate(series.templates)
+        segment <= length(series.panel_initial_values) || break
+        apply_series_initial_values!([template], series.panel_initial_values[segment])
+    end
+
+    return nothing
+end
+
+
+function rebuild_series_template!(controller::QMLController, segment::Int)
+    series = controller.series
+
+    if length(series.templates) != length(controller.app.simulations)
+        reset_series_templates_to_live_state!(controller)
+        apply_panel_initial_values!(controller)
+        return nothing
+    end
+
+    template = RD.make_series_template(controller.app.simulations[segment])
+    apply_series_initial_values!([template], series.panel_initial_values[segment])
+    series.templates[segment] = template
+    return nothing
+end
+
+
+function mark_panel_custom!(controller::QMLController, segment::Int)
+    series = controller.series
+    ensure_panel_preset_state!(controller)
+    1 <= segment <= length(series.panel_presets) || return nothing
+
+    series.panel_presets[segment] = "custom"
+    series.custom_sets[segment] = CustomPanelSet(
+        deepcopy(filter(perturbation -> perturbation.segment == segment, series.perturbations)),
+        copy(series.panel_initial_values[segment]),
+    )
+    return nothing
+end
+
+
 const SERIES_PATTERN_DISPLAY_LIMIT = 300
 
 
@@ -411,7 +504,7 @@ function series_results_json(controller)
             config_heads = [length(groups[index].reference) for index in order]
 
             # Only the displayed panel carries its (large) pattern data.
-            patterns_json = segment == series.results_panel ?
+            patterns_json = segment == series.selected_segment ?
                 series_patterns_json(controller, segment) :
                 "\"patternX\":[],\"patterns\":[],\"patternConverged\":[]"
 
@@ -456,6 +549,7 @@ function series_default_position(app::RD.AppState, segment::Int)
 end
 
 
+const SERIES_POSITION_DIGITS = 2
 const SERIES_WIDTH_DIGITS = 2
 const SERIES_WIDTH_STEP = 10.0^-SERIES_WIDTH_DIGITS
 const SERIES_HEIGHT_DIGITS = 1
@@ -469,6 +563,17 @@ function clamp_series_perturbation!(app::RD.AppState, perturbation::RD.SeriesPer
     perturbation.width_min = clamp(perturbation.width_min, eps(Float64), perturbation.width_max)
     # Keep the stored values at the precision shown in the series window, so
     # that focusing and leaving a field never changes a perturbation silently.
+    # The largest shown position that still lies inside the panel bounds it.
+    position_maximum = round(displayed_length; digits = SERIES_POSITION_DIGITS)
+    position_maximum > displayed_length && (position_maximum = round(
+        position_maximum - 10.0^-SERIES_POSITION_DIGITS;
+        digits = SERIES_POSITION_DIGITS,
+    ))
+    perturbation.position = clamp(
+        round(perturbation.position; digits = SERIES_POSITION_DIGITS),
+        0.0,
+        position_maximum,
+    )
     perturbation.width_max = max(
         SERIES_WIDTH_STEP,
         round(perturbation.width_max; digits = SERIES_WIDTH_DIGITS),
@@ -978,7 +1083,6 @@ function refresh_series_bindings!(controller::QMLController)
     set_if_changed!(controller.bindings.series_seed, string(settings.seed))
     set_if_changed!(controller.bindings.series_head_variable, settings.head_variable)
     set_if_changed!(controller.bindings.series_live_preview, settings.live_preview)
-    set_if_changed!(controller.bindings.series_results_panel, series.results_panel)
     set_if_changed!(controller.bindings.series_single_run, series.single_run)
     set_if_changed!(controller.bindings.series_selected_segment, series.selected_segment)
     set_if_changed!(controller.bindings.series_selected_variable, series.selected_variable)
@@ -991,24 +1095,34 @@ function refresh_series_bindings!(controller::QMLController)
         controller.bindings.series_perturbations_json,
         series_perturbations_json(series),
     )
+    # The preset selector always shows the state of the selected panel.
+    ensure_panel_preset_state!(controller)
     model_key = controller.bindings.active_model_key[]
+    segment = clamp(series.selected_segment, 1, length(series.panel_presets))
     set_if_changed!(
         controller.bindings.series_presets_json,
-        series_presets_json(SERIES_PRESETS, model_key),
+        series_presets_json(
+            SERIES_PRESETS,
+            model_key;
+            include_custom = series.custom_sets[segment] !== nothing,
+        ),
     )
-    selected_preset = series.selected_preset_key
-    if selected_preset != "none" && series_preset_by_key(model_key, selected_preset) === nothing
+    selected_preset = series.panel_presets[segment]
+    if selected_preset ∉ ("none", "custom") &&
+       series_preset_by_key(model_key, selected_preset) === nothing
         selected_preset = "none"
-        series.selected_preset_key = selected_preset
+        series.panel_presets[segment] = selected_preset
     end
     set_if_changed!(controller.bindings.series_selected_preset, selected_preset)
 
-    if series.published_results_revision != series.results_revision
+    if series.published_results_revision != series.results_revision ||
+       series.published_results_segment != series.selected_segment
         set_if_changed!(
             controller.bindings.series_results_json,
             series_results_json(controller),
         )
         series.published_results_revision = series.results_revision
+        series.published_results_segment = series.selected_segment
     end
 
     return nothing
@@ -1357,6 +1471,7 @@ function set_series_mode!(controller::QMLController, enabled)
             lock(series.lock)
             try
                 series.templates = templates
+                apply_panel_initial_values!(controller)
                 series.base_snapshots = base_snapshots
                 series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[
                     base_snapshots...
@@ -1402,9 +1517,16 @@ end
 
 
 function select_series_segment!(controller::QMLController, segment_value)
+    # One selection drives the perturbation editor and the results view.
+    # During a run it only switches the displayed results.
     series = controller.series
-    series.running[] && return nothing
     series.selected_segment = clamp(Int(segment_value), 1, length(controller.app.simulations))
+
+    if series.running[]
+        refresh_series_bindings!(controller)
+        return nothing
+    end
+
     series.selected_variable = clamp(
         series.selected_variable,
         1,
@@ -1455,59 +1577,93 @@ function set_series_position!(controller::QMLController, value)
 end
 
 
-function select_series_preset!(controller::QMLController, preset_key_value)
-    return guarded_action(controller, "Series preset selection failed") do
-        series = controller.series
-        series.running[] && return nothing
-        preset_key = String(preset_key_value)
+function series_preset_perturbations(
+    controller::QMLController,
+    preset::SeriesPresetDefinition,
+    segment::Int,
+)
+    model = controller.app.simulations[segment].model
+    displayed_length = series_display_length(controller.app, segment)
+    displayed_length > 0.0 || error("The selected panel has zero length.")
+    perturbations = RD.SeriesPerturbation[]
 
-        if preset_key == "none"
-            clear_series_perturbations!(controller)
-            reset_series_templates_to_live_state!(controller)
-            refresh_series_bindings!(controller)
-            return nothing
-        end
-
-        model_key = controller.bindings.active_model_key[]
-        preset = series_preset_by_key(model_key, preset_key)
-        preset === nothing && error("This Series preset is not available for the selected model.")
-        selected_segment = clamp(series.selected_segment, 1, length(controller.app.simulations))
-        model = controller.app.simulations[selected_segment].model
-        displayed_length = series_display_length(controller.app, selected_segment)
-        displayed_length > 0.0 || error("The selected panel has zero length.")
-
-        restore_series_base_display!(controller)
-        templates = reset_series_templates_to_live_state!(controller)
-        apply_series_initial_values!(templates, preset.initial_values)
-        empty!(series.perturbations)
-        series.next_perturbation_id = 1
-        series.selected_perturbation_id = 0
-
-        for definition in preset.perturbations
-            variable = findfirst(==(definition.variable_name), model.varnames)
-            variable === nothing &&
-                error(
-                    "Preset $(preset.name) requires variable '$(definition.variable_name)', " *
-                    "which is unavailable in the selected model.",
-                )
-            perturbation = RD.SeriesPerturbation(
-                id = series.next_perturbation_id,
-                segment = selected_segment,
+    for definition in preset.perturbations
+        variable = findfirst(==(definition.variable_name), model.varnames)
+        variable === nothing &&
+            error(
+                "Preset $(preset.name) requires variable '$(definition.variable_name)', " *
+                "which is unavailable in the selected model.",
+            )
+        push!(
+            perturbations,
+            RD.SeriesPerturbation(
+                id = 0,
+                segment = segment,
                 variable = variable,
                 position = definition.position_fraction * displayed_length,
                 width_min = definition.width_min_fraction * displayed_length,
                 width_max = definition.width_max_fraction * displayed_length,
                 height_min = definition.height_min,
                 height_max = definition.height_max,
-            )
-            clamp_series_perturbation!(controller.app, perturbation)
-            push!(series.perturbations, perturbation)
-            series.selected_perturbation_id = perturbation.id
-            series.next_perturbation_id += 1
+            ),
+        )
+    end
+
+    return perturbations
+end
+
+
+function select_series_preset!(controller::QMLController, preset_key_value)
+    # Replaces the perturbations and initial values of the selected panel
+    # only; every other panel keeps its own preset.
+    return guarded_action(controller, "Series preset selection failed") do
+        series = controller.series
+        series.running[] && return nothing
+        ensure_panel_preset_state!(controller)
+        preset_key = String(preset_key_value)
+        segment = clamp(series.selected_segment, 1, length(controller.app.simulations))
+        model = controller.app.simulations[segment].model
+
+        if preset_key == "none"
+            perturbations = RD.SeriesPerturbation[]
+            initial_values = Dict{String, Float64}()
+            status = "Cleared the perturbations of panel $segment"
+        elseif preset_key == "custom"
+            custom = series.custom_sets[segment]
+            custom === nothing && error("Panel $segment has no custom perturbations.")
+            perturbations = deepcopy(custom.perturbations)
+            initial_values = copy(custom.initial_values)
+            status = "Restored the custom perturbations of panel $segment"
+        else
+            model_key = controller.bindings.active_model_key[]
+            preset = series_preset_by_key(model_key, preset_key)
+            preset === nothing && error("This Series preset is not available for the selected model.")
+            perturbations = series_preset_perturbations(controller, preset, segment)
+            initial_values = copy(preset.initial_values)
+            status = "Loaded preset $(preset.name) into panel $segment"
         end
 
-        series.selected_preset_key = preset.key
-        series.status = "Loaded preset $(preset.name) into panel $selected_segment"
+        for variable_name in keys(initial_values)
+            variable_name in model.varnames ||
+                error("The preset requires variable '$variable_name', which is unavailable in this model.")
+        end
+
+        restore_series_base_display!(controller)
+        filter!(perturbation -> perturbation.segment != segment, series.perturbations)
+
+        for perturbation in perturbations
+            perturbation.id = series.next_perturbation_id
+            perturbation.segment = segment
+            series.next_perturbation_id += 1
+            clamp_series_perturbation!(controller.app, perturbation)
+            push!(series.perturbations, perturbation)
+        end
+
+        series.selected_perturbation_id = isempty(perturbations) ? 0 : last(perturbations).id
+        series.panel_presets[segment] = preset_key
+        series.panel_initial_values[segment] = initial_values
+        rebuild_series_template!(controller, segment)
+        series.status = isempty(series.perturbations) ? "Add at least one perturbation" : status
         clear_series_results!(controller)
         update_series_editor_selection!(controller)
         series.editor_open && show_series_previews!(controller)
@@ -1538,7 +1694,7 @@ function add_series_perturbation!(controller::QMLController)
     push!(series.perturbations, perturbation)
     series.next_perturbation_id += 1
     series.selected_perturbation_id = perturbation.id
-    series.selected_preset_key = "none"
+    mark_panel_custom!(controller, perturbation.segment)
     series.status = "Ready to run"
     series.editor_open && show_series_previews!(controller)
     clear_series_position_marker!(controller)
@@ -1565,9 +1721,11 @@ function delete_series_perturbation!(controller::QMLController, id_value)
     series.running[] && return nothing
     restore_series_base_display!(controller)
     id = Int(id_value)
+    deleted = series_perturbation_by_id(series, id)
+    deleted === nothing && return nothing
     filter!(perturbation -> perturbation.id != id, series.perturbations)
     series.selected_perturbation_id == id && (series.selected_perturbation_id = 0)
-    series.selected_preset_key = "none"
+    mark_panel_custom!(controller, deleted.segment)
     series.status = isempty(series.perturbations) ? "Add at least one perturbation" : "Ready to run"
     series.editor_open && show_series_previews!(controller)
     refresh_series_bindings!(controller)
@@ -1582,6 +1740,7 @@ function update_series_perturbation!(controller::QMLController, id_value, field_
     perturbation = series_perturbation_by_id(series, Int(id_value))
     perturbation === nothing && return nothing
     field = String(field_value)
+    previous_segment = perturbation.segment
 
     if field == "panel"
         old_length = series_display_length(controller.app, perturbation.segment)
@@ -1613,7 +1772,8 @@ function update_series_perturbation!(controller::QMLController, id_value, field_
     perturbation.height_min <= perturbation.height_max ||
         error("Height minimum cannot exceed height maximum.")
     series.selected_perturbation_id = perturbation.id
-    series.selected_preset_key = "none"
+    mark_panel_custom!(controller, perturbation.segment)
+    previous_segment == perturbation.segment || mark_panel_custom!(controller, previous_segment)
     update_series_editor_selection!(controller)
     series.editor_open && show_series_previews!(controller)
     refresh_series_bindings!(controller)
@@ -1830,7 +1990,6 @@ function reset_series_results_locked!(
     series.patterns = [Vector{Float64}[] for _ in templates]
     series.pattern_converged = [Bool[] for _ in templates]
     series.configuration_groups = [RD.HeadConfigurationGroup[] for _ in templates]
-    series.results_panel = clamp(series.results_panel, 1, max(1, length(templates)))
     series.results_revision += 1
     return nothing
 end
@@ -1857,7 +2016,6 @@ function clear_series_results!(controller::QMLController)
         # Keep one (empty) result entry per panel, so the series window keeps
         # showing empty charts instead of hiding them.
         reset_series_results_locked!(series, series.templates)
-        series.results_panel = 1
         fill!(series.latest_residuals, NaN)
         series.residual_revision += 1
     finally
@@ -2058,22 +2216,6 @@ function launch_series!(controller::QMLController; single_run::Bool)
 end
 
 
-function set_series_results_panel!(controller::QMLController, panel)
-    series = controller.series
-
-    lock(series.lock)
-    try
-        series.results_panel = clamp(Int(panel), 1, max(1, length(series.location_counts)))
-        series.results_revision += 1
-    finally
-        unlock(series.lock)
-    end
-
-    refresh_series_bindings!(controller)
-    return nothing
-end
-
-
 function stop_series!(controller::QMLController)
     series = controller.series
     series.running[] || return nothing
@@ -2088,7 +2230,7 @@ function clear_series_perturbations!(controller::QMLController)
     series = controller.series
     empty!(series.perturbations)
     series.selected_perturbation_id = 0
-    series.selected_preset_key = "none"
+    clear_panel_preset_state!(controller)
     series.selected_segment = 1
     series.selected_variable = 1
     series.selected_position = series_default_position(controller.app, 1)
@@ -2113,6 +2255,15 @@ function remap_series_after_split!(
     split_segment::Int,
     split_position::Float64,
 )
+    # Both halves inherit the initial values; perturbations that came from a
+    # preset no longer match it, so a non-empty panel becomes custom.
+    series = controller.series
+    ensure_panel_preset_state!(controller, length(controller.app.simulations) - 1)
+    had_setup = series.panel_presets[split_segment] != "none"
+    insert!(series.panel_presets, split_segment + 1, "none")
+    insert!(series.panel_initial_values, split_segment + 1, copy(series.panel_initial_values[split_segment]))
+    insert!(series.custom_sets, split_segment + 1, nothing)
+
     for perturbation in controller.series.perturbations
         if perturbation.segment > split_segment
             perturbation.segment += 1
@@ -2120,6 +2271,11 @@ function remap_series_after_split!(
             perturbation.segment += 1
             perturbation.position -= split_position
         end
+    end
+
+    if had_setup
+        mark_panel_custom!(controller, split_segment)
+        mark_panel_custom!(controller, split_segment + 1)
     end
 
     clamp_all_series_perturbations!(controller)
@@ -2135,6 +2291,18 @@ function remap_series_after_merge!(
     left_display_length::Float64,
 )
     right_segment = left_segment + 1
+    series = controller.series
+    ensure_panel_preset_state!(controller, length(controller.app.simulations) + 1)
+    had_setup = series.panel_presets[left_segment] != "none" ||
+                series.panel_presets[right_segment] != "none"
+    same_initial_values =
+        series.panel_initial_values[left_segment] == series.panel_initial_values[right_segment]
+    same_initial_values || (series.panel_initial_values[left_segment] = Dict{String, Float64}())
+    series.panel_presets[left_segment] = "none"
+    series.custom_sets[left_segment] = nothing
+    deleteat!(series.panel_presets, right_segment)
+    deleteat!(series.panel_initial_values, right_segment)
+    deleteat!(series.custom_sets, right_segment)
 
     for perturbation in controller.series.perturbations
         if perturbation.segment == right_segment
@@ -2145,6 +2313,8 @@ function remap_series_after_merge!(
         end
     end
 
+    had_setup && mark_panel_custom!(controller, left_segment)
+
     clamp_all_series_perturbations!(controller)
     controller.series.editor_open && show_series_previews!(controller)
     refresh_series_bindings!(controller)
@@ -2154,6 +2324,12 @@ end
 
 function remap_series_after_swap!(controller::QMLController, left_segment::Int)
     right_segment = left_segment + 1
+    series = controller.series
+    ensure_panel_preset_state!(controller)
+
+    for values in (series.panel_presets, series.panel_initial_values, series.custom_sets)
+        values[left_segment], values[right_segment] = values[right_segment], values[left_segment]
+    end
 
     for perturbation in controller.series.perturbations
         if perturbation.segment == left_segment
@@ -2171,6 +2347,11 @@ end
 
 
 function remap_series_after_delete!(controller::QMLController, deleted_segment::Int)
+    series = controller.series
+    ensure_panel_preset_state!(controller, length(controller.app.simulations) + 1)
+    deleteat!(series.panel_presets, deleted_segment)
+    deleteat!(series.panel_initial_values, deleted_segment)
+    deleteat!(series.custom_sets, deleted_segment)
     filter!(perturbation -> perturbation.segment != deleted_segment, controller.series.perturbations)
 
     for perturbation in controller.series.perturbations
@@ -2185,7 +2366,13 @@ end
 
 
 function rescale_series_perturbations!(controller::QMLController, factor::Float64)
-    for perturbation in controller.series.perturbations
+    custom_perturbations = (
+        perturbation
+        for custom in controller.series.custom_sets if custom !== nothing
+        for perturbation in custom.perturbations
+    )
+
+    for perturbation in Iterators.flatten((controller.series.perturbations, custom_perturbations))
         perturbation.position *= factor
         perturbation.width_min *= factor
         perturbation.width_max *= factor
@@ -2359,6 +2546,7 @@ function set_domain_exponent!(controller::QMLController, exponent)
             lock(series.lock)
             try
                 series.templates = templates
+                apply_panel_initial_values!(controller)
                 series.base_snapshots = base_snapshots
                 series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[base_snapshots...]
                 series.generation = generation
@@ -2933,10 +3121,6 @@ function register_qml_functions!(controller::QMLController)
     )
     QML.qmlfunction("startSeries", guarded(() -> start_series!(controller), "Series start failed"))
     QML.qmlfunction("runOneSeries", guarded(() -> run_one_series!(controller), "Run one failed"))
-    QML.qmlfunction(
-        "setSeriesResultsPanel",
-        guarded(value -> set_series_results_panel!(controller, value), "Results panel change failed"),
-    )
     QML.qmlfunction("stopSeries", guarded(() -> stop_series!(controller), "Series stop failed"))
     QML.qmlfunction("requestClose", () -> request_close!(controller))
 
@@ -3005,7 +3189,6 @@ function qml_property_map(
         "seriesSelectedPreset" => bindings.series_selected_preset,
         "seriesResultsJson" => bindings.series_results_json,
         "seriesMode" => bindings.series_mode,
-        "seriesResultsPanel" => bindings.series_results_panel,
         "seriesSingleRun" => bindings.series_single_run,
         "autoCloseMs" => Observable(auto_close_ms),
     )
@@ -3150,7 +3333,6 @@ function create_qml_controller(;
         Observable("none"),
         Observable("[]"),
         Observable(false),
-        Observable(1),
         Observable(false),
         Observable(first_model.description),
         Observable(model_parameters_json(first_model, simulation.params)),

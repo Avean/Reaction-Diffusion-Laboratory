@@ -21,7 +21,16 @@ Window {
         }
     }
     property var panelNames: Array.from({length: ui.segmentCount}, (_, index) => String(index + 1))
+    property var panelPerturbationCounts: {
+        const counts = Array.from({length: ui.segmentCount}, () => 0)
+        for (const perturbation of perturbations) {
+            if (perturbation.panel >= 1 && perturbation.panel <= counts.length)
+                counts[perturbation.panel - 1] += 1
+        }
+        return counts
+    }
     property string perturbationsJson: ui.seriesPerturbationsJson
+    property int selectedPanel: ui.seriesSelectedSegment
 
     // The perturbation cards are updated in place: rebuilding them after
     // every edit would destroy the field being edited, losing its focus and
@@ -30,8 +39,9 @@ Window {
         id: perturbationModel
     }
 
+    // Only the cards of the selected panel are shown.
     function syncPerturbationModel() {
-        const items = JSON.parse(perturbationsJson)
+        const items = JSON.parse(perturbationsJson).filter(item => item.panel === selectedPanel)
         let sameCards = items.length === perturbationModel.count
         for (let index = 0; sameCards && index < items.length; ++index)
             sameCards = perturbationModel.get(index).perturbationId === items[index].id
@@ -59,6 +69,7 @@ Window {
     }
 
     onPerturbationsJsonChanged: syncPerturbationModel()
+    onSelectedPanelChanged: syncPerturbationModel()
     Component.onCompleted: syncPerturbationModel()
 
     visible: ui.seriesMode
@@ -282,87 +293,6 @@ Window {
                         }
 
                         ControlSection {
-                            title: "Preset"
-                            Layout.leftMargin: 10
-                            Layout.rightMargin: 10
-                            enabled: !ui.seriesRunning
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                ComboBox {
-                                    id: presetComboBox
-                                    Layout.fillWidth: true
-                                    model: seriesWindow.presets
-                                    textRole: "name"
-                                    currentIndex: {
-                                        for (let index = 0; index < seriesWindow.presets.length; ++index) {
-                                            if (seriesWindow.presets[index].key === ui.seriesSelectedPreset)
-                                                return index
-                                        }
-                                        return 0
-                                    }
-                                    onActivated: {
-                                        if (currentIndex >= 0 && currentIndex < seriesWindow.presets.length)
-                                            Julia.selectSeriesPreset(seriesWindow.presets[currentIndex].key)
-                                    }
-                                }
-                            }
-                        }
-
-                        ControlSection {
-                            title: "New perturbation"
-                            Layout.leftMargin: 10
-                            Layout.rightMargin: 10
-                            enabled: !ui.seriesRunning
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label { text: "Panel" }
-
-                                ComboBox {
-                                    Layout.preferredWidth: 80
-                                    model: seriesWindow.panelNames
-                                    currentIndex: Math.max(0, ui.seriesSelectedSegment - 1)
-                                    onActivated: Julia.selectSeriesSegment(currentIndex + 1)
-                                }
-
-                                Label { text: "Variable" }
-
-                                ComboBox {
-                                    Layout.fillWidth: true
-                                    model: seriesWindow.variables
-                                    currentIndex: Math.max(0, ui.seriesSelectedVariable - 1)
-                                    onActivated: Julia.selectSeriesVariable(currentIndex + 1)
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: "Position: " + Number(ui.seriesPosition).toPrecision(5)
-                                    Layout.preferredWidth: 138
-                                }
-
-                                Slider {
-                                    Layout.fillWidth: true
-                                    from: 0
-                                    to: Math.max(0.000001, Number(ui.seriesSelectedPanelLength))
-                                    value: Number(ui.seriesPosition)
-                                    onMoved: Julia.setSeriesPosition(value)
-                                }
-                            }
-
-                            Button {
-                                Layout.alignment: Qt.AlignRight
-                                text: "Add perturbation"
-                                onClicked: Julia.addSeriesPerturbation()
-                            }
-                        }
-
-                        ControlSection {
                             title: "Series settings"
                             expanded: false
                             Layout.leftMargin: 10
@@ -469,16 +399,105 @@ Window {
                             }
                         }
 
+                        // The panel selected here is also the panel whose
+                        // results are shown; every panel keeps its own preset.
                         ControlSection {
                             title: "Perturbations"
                             Layout.leftMargin: 10
                             Layout.rightMargin: 10
                             Layout.bottomMargin: 12
 
+                            // Stays enabled during a run to switch the results.
+                            PanelSelector {
+                                Layout.fillWidth: true
+                                count: ui.segmentCount
+                                current: ui.seriesSelectedSegment
+                                badges: seriesWindow.panelPerturbationCounts
+                                onActivated: panel => Julia.selectSeriesSegment(panel)
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                enabled: !ui.seriesRunning
+
+                                Label {
+                                    Layout.topMargin: 6
+                                    text: "Preset"
+                                    font.bold: true
+                                }
+
+                                ComboBox {
+                                    id: presetComboBox
+                                    Layout.fillWidth: true
+                                    model: seriesWindow.presets
+                                    textRole: "name"
+                                    currentIndex: {
+                                        for (let index = 0; index < seriesWindow.presets.length; ++index) {
+                                            if (seriesWindow.presets[index].key === ui.seriesSelectedPreset)
+                                                return index
+                                        }
+                                        return 0
+                                    }
+                                    onActivated: {
+                                        if (currentIndex >= 0 && currentIndex < seriesWindow.presets.length)
+                                            Julia.selectSeriesPreset(seriesWindow.presets[currentIndex].key)
+                                    }
+                                }
+
+                                Label {
+                                    Layout.topMargin: 6
+                                    text: "New perturbation"
+                                    font.bold: true
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Label { text: "Variable" }
+
+                                    ComboBox {
+                                        Layout.fillWidth: true
+                                        model: seriesWindow.variables
+                                        currentIndex: Math.max(0, ui.seriesSelectedVariable - 1)
+                                        onActivated: Julia.selectSeriesVariable(currentIndex + 1)
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: "Position: " + Number(ui.seriesPosition).toFixed(2)
+                                        Layout.preferredWidth: 138
+                                    }
+
+                                    Slider {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: Math.max(0.000001, Number(ui.seriesSelectedPanelLength))
+                                        value: Number(ui.seriesPosition)
+                                        onMoved: Julia.setSeriesPosition(value)
+                                    }
+                                }
+
+                                Button {
+                                    Layout.alignment: Qt.AlignRight
+                                    text: "Add perturbation"
+                                    onClicked: Julia.addSeriesPerturbation()
+                                }
+                            }
+
+                            Label {
+                                Layout.topMargin: 6
+                                text: "Perturbations in panel " + ui.seriesSelectedSegment
+                                font.bold: true
+                            }
+
                             Label {
                                 Layout.fillWidth: true
-                                visible: seriesWindow.perturbations.length === 0
-                                text: "No perturbations yet."
+                                visible: perturbationModel.count === 0
+                                text: "No perturbations in panel " + ui.seriesSelectedSegment + "."
                                 color: "#68717d"
                             }
 
@@ -518,7 +537,7 @@ Window {
 
                                             Label {
                                                 Layout.fillWidth: true
-                                                text: "Perturbation " + perturbationCard.perturbationId + "   ·   x = " + Number(perturbationCard.position).toPrecision(5)
+                                                text: "Perturbation " + perturbationCard.perturbationId + "   ·   x = " + Number(perturbationCard.position).toFixed(2)
                                                 font.bold: true
                                             }
 
@@ -572,7 +591,7 @@ Window {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
                                                 validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.position).toPrecision(5)
+                                                text: Number(perturbationCard.position).toFixed(2)
                                                 onEditingFinished: perturbationCard.commitField("position", text)
                                             }
                                         }
@@ -630,7 +649,7 @@ Window {
                 property var current: {
                     const results = seriesWindow.results
                     for (let index = 0; index < results.length; ++index) {
-                        if (results[index].panel === ui.seriesResultsPanel)
+                        if (results[index].panel === ui.seriesSelectedSegment)
                             return results[index]
                     }
                     return results.length > 0 ? results[0] : null
@@ -640,31 +659,12 @@ Window {
                 Layout.margins: 12
                 spacing: 8
 
-                RowLayout {
+                PanelSelector {
                     Layout.fillWidth: true
-                    visible: seriesWindow.results.length > 1
-                    spacing: 6
-
-                    Label {
-                        text: "Panel"
-                        font.bold: true
-                    }
-
-                    Repeater {
-                        model: seriesWindow.results.length
-
-                        Button {
-                            required property int index
-                            text: String(index + 1)
-                            checkable: true
-                            checked: ui.seriesResultsPanel === index + 1
-                            highlighted: checked
-                            focusPolicy: Qt.NoFocus
-                            onClicked: Julia.setSeriesResultsPanel(index + 1)
-                        }
-                    }
-
-                    Item { Layout.fillWidth: true }
+                    visible: ui.segmentCount > 1
+                    count: ui.segmentCount
+                    current: ui.seriesSelectedSegment
+                    onActivated: panel => Julia.selectSeriesSegment(panel)
                 }
 
                 // Plain column, no scroll container: sizing charts from a

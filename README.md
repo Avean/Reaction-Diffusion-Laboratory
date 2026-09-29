@@ -96,8 +96,8 @@ When a model declares several profile sets, the active one is chosen in the
 Requires Julia 1.11 or newer.
 
 ```bash
-git clone https://github.com/Avean/reaction-diffusion-laboratory.git
-cd reaction-diffusion-laboratory
+git clone https://github.com/Avean/Reaction-Diffusion-Laboratory.git
+cd Reaction-Diffusion-Laboratory
 julia install_dependencies.jl
 ```
 
