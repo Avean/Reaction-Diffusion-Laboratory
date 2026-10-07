@@ -42,8 +42,12 @@ RDModel(
         pv = 0.0,
 
         ρ0 = 1.0,
-        # ρ1 = 1.5,
         ρ1 = 0.5,
+
+        # Exponential profiles: ρ(x) = ρa + ρb exp(ρc x)
+        ρa = 0.5,
+        ρb = 0.5,
+        ρc = 1.0,
     ),
 
     initial = function (U, x, p)
@@ -126,6 +130,19 @@ RDModel(
                 )
 
                 return ρx
+            end,
+        ),
+
+        ExpFootHead = (
+            ρ = (x, p) -> @.(p.ρa + p.ρb * exp(p.ρc * x)),
+        ),
+
+        ExpHeadFoot = (
+            ρ = (x, p) -> begin
+                H = div(length(x), 2)
+                ρx = @. p.ρa + p.ρb * exp(p.ρc * x)
+
+                return [ρx[(H + 1):end]; ρx[1:H]]
             end,
         ),
     ),
