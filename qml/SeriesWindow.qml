@@ -533,19 +533,19 @@ Window {
                                             columns: 4
                                             columnSpacing: 6
 
-                                            Label { text: "Width min" }
+                                            Label { text: "Width min (0–1)" }
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
                                                 text: Number(perturbationCard.widthMin).toFixed(2)
                                                 onEditingFinished: perturbationCard.commitField("widthMin", text)
                                             }
-                                            Label { text: "Width max" }
+                                            Label { text: "Width max (0–1)" }
                                             TextField {
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
-                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
                                                 text: Number(perturbationCard.widthMax).toFixed(2)
                                                 onEditingFinished: perturbationCard.commitField("widthMax", text)
                                             }

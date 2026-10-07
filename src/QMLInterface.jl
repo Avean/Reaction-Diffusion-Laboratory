@@ -291,17 +291,22 @@ function empty_series_controller()
 end
 
 
-function series_perturbations_json(series::SeriesController)
+function series_perturbations_json(controller)
+    # Widths are fractions of the panel length; the position is shown in the
+    # axis units of its panel.
+    series = controller.series
     entries = String[]
 
     for perturbation in series.perturbations
+        displayed_length = perturbation.segment <= length(controller.app.simulations) ?
+            series_display_length(controller.app, perturbation.segment) : 0.0
         push!(
             entries,
             "{" *
             "\"id\":" * string(perturbation.id) * "," *
             "\"panel\":" * string(perturbation.segment) * "," *
             "\"variable\":" * string(perturbation.variable) * "," *
-            "\"position\":" * json_number(perturbation.position) * "," *
+            "\"position\":" * json_number(perturbation.position * displayed_length) * "," *
             "\"widthMin\":" * json_number(perturbation.width_min) * "," *
             "\"widthMax\":" * json_number(perturbation.width_max) * "," *
             "\"heightMin\":" * json_number(perturbation.height_min) * "," *
@@ -529,12 +534,10 @@ function series_display_length(app::RD.AppState, segment::Int)
 end
 
 
-function series_default_position(app::RD.AppState, segment::Int)
-    return series_display_length(app, segment) / 2
-end
-
-
-const SERIES_POSITION_DIGITS = 2
+# Series perturbations store their position and widths as fractions of the
+# panel length (0 to 1). They are converted to axis units for display and
+# previews, and to solver units when a series starts, so changing the domain
+# length never changes them.
 const SERIES_WIDTH_DIGITS = 2
 const SERIES_WIDTH_STEP = 10.0^-SERIES_WIDTH_DIGITS
 const SERIES_HEIGHT_DIGITS = 1
@@ -542,26 +545,13 @@ const SERIES_HEIGHT_DIGITS = 1
 
 function clamp_series_perturbation!(app::RD.AppState, perturbation::RD.SeriesPerturbation)
     1 <= perturbation.segment <= length(app.simulations) || return false
-    displayed_length = series_display_length(app, perturbation.segment)
-    perturbation.position = clamp(perturbation.position, 0.0, displayed_length)
-    perturbation.width_max = clamp(perturbation.width_max, eps(Float64), displayed_length)
-    perturbation.width_min = clamp(perturbation.width_min, eps(Float64), perturbation.width_max)
-    # Keep the stored values at the precision shown in the series window, so
-    # that focusing and leaving a field never changes a perturbation silently.
-    # The largest shown position that still lies inside the panel bounds it.
-    position_maximum = round(displayed_length; digits = SERIES_POSITION_DIGITS)
-    position_maximum > displayed_length && (position_maximum = round(
-        position_maximum - 10.0^-SERIES_POSITION_DIGITS;
-        digits = SERIES_POSITION_DIGITS,
-    ))
-    perturbation.position = clamp(
-        round(perturbation.position; digits = SERIES_POSITION_DIGITS),
-        0.0,
-        position_maximum,
-    )
-    perturbation.width_max = max(
-        SERIES_WIDTH_STEP,
+    perturbation.position = clamp(perturbation.position, 0.0, 1.0)
+    # Widths keep the precision shown in the series window, so that focusing
+    # and leaving a field never changes a perturbation silently.
+    perturbation.width_max = clamp(
         round(perturbation.width_max; digits = SERIES_WIDTH_DIGITS),
+        SERIES_WIDTH_STEP,
+        1.0,
     )
     perturbation.width_min = clamp(
         round(perturbation.width_min; digits = SERIES_WIDTH_DIGITS),
@@ -1062,14 +1052,17 @@ function refresh_series_bindings!(controller::QMLController)
     set_if_changed!(controller.bindings.series_single_run, series.single_run)
     set_if_changed!(controller.bindings.series_selected_segment, series.selected_segment)
     set_if_changed!(controller.bindings.series_selected_variable, series.selected_variable)
-    set_if_changed!(controller.bindings.series_position, series.selected_position)
+    set_if_changed!(
+        controller.bindings.series_position,
+        series.selected_position * series_display_length(controller.app, series.selected_segment),
+    )
     set_if_changed!(
         controller.bindings.series_selected_panel_length,
         series_display_length(controller.app, series.selected_segment),
     )
     set_if_changed!(
         controller.bindings.series_perturbations_json,
-        series_perturbations_json(series),
+        series_perturbations_json(controller),
     )
     # The preset selector always shows the state of the selected panel.
     ensure_panel_preset_state!(controller)
@@ -1270,7 +1263,8 @@ function series_preview_anchor(
     panel = controller.app.plot_panel
     x = panel.segment_x_observables[perturbation.segment][]
     y = panel.segment_observables[perturbation.segment][perturbation.variable][]
-    index = RD.nearest_grid_index(x, perturbation.position)
+    centre = perturbation.position * series_display_length(controller.app, perturbation.segment)
+    index = RD.nearest_grid_index(x, centre)
     return y[index]
 end
 
@@ -1286,8 +1280,11 @@ function add_series_preview_box!(
     panel = controller.app.plot_panel
     axis = panel.segment_axes[perturbation.segment][perturbation.variable]
     base = series_preview_anchor(controller, perturbation)
-    left = perturbation.position - width / 2
-    right = perturbation.position + width / 2
+    # Position and width are fractions of the panel length.
+    displayed_length = series_display_length(controller.app, perturbation.segment)
+    centre = perturbation.position * displayed_length
+    left = centre - width * displayed_length / 2
+    right = centre + width * displayed_length / 2
     top = base + height
     x = [left, right, right, left, left]
     y = [base, base, top, top, base]
@@ -1368,7 +1365,7 @@ function update_series_position_marker!(controller::QMLController)
     displayed_length = series_display_length(controller.app, segment)
     displayed_length > 0.0 && sim.N >= 5 || return nothing
     index = clamp(
-        round(Int, series.selected_position / displayed_length * sim.N),
+        round(Int, series.selected_position * sim.N),
         2,
         sim.N - 2,
     )
@@ -1404,11 +1401,7 @@ function update_series_editor_selection!(controller::QMLController)
         1,
         controller.app.simulations[series.selected_segment].model.nvars,
     )
-    series.selected_position = clamp(
-        series.selected_position,
-        0.0,
-        series_display_length(controller.app, series.selected_segment),
-    )
+    series.selected_position = clamp(series.selected_position, 0.0, 1.0)
     return nothing
 end
 
@@ -1508,11 +1501,6 @@ function select_series_segment!(controller::QMLController, segment_value)
         1,
         controller.app.simulations[series.selected_segment].model.nvars,
     )
-    series.selected_position = clamp(
-        series.selected_position,
-        0.0,
-        series_display_length(controller.app, series.selected_segment),
-    )
     update_series_position_marker!(controller)
     refresh_series_bindings!(controller)
     return nothing
@@ -1538,10 +1526,12 @@ function set_series_position!(controller::QMLController, value)
             controller.app,
             series.selected_segment,
         )
+        displayed_length > 0.0 || error("The selected panel has zero length.")
+        # The slider works in axis units; the position is kept as a fraction.
         series.selected_position = clamp(
-            parse_finite_qml_number(value, "Series position"),
+            parse_finite_qml_number(value, "Series position") / displayed_length,
             0.0,
-            displayed_length,
+            1.0,
         )
 
         # The slider only chooses the centre for the *next* perturbation.
@@ -1559,8 +1549,6 @@ function series_preset_perturbations(
     segment::Int,
 )
     model = controller.app.simulations[segment].model
-    displayed_length = series_display_length(controller.app, segment)
-    displayed_length > 0.0 || error("The selected panel has zero length.")
     perturbations = RD.SeriesPerturbation[]
 
     for definition in preset.perturbations
@@ -1576,9 +1564,9 @@ function series_preset_perturbations(
                 id = 0,
                 segment = segment,
                 variable = variable,
-                position = definition.position_fraction * displayed_length,
-                width_min = definition.width_min_fraction * displayed_length,
-                width_max = definition.width_max_fraction * displayed_length,
+                position = definition.position_fraction,
+                width_min = definition.width_min_fraction,
+                width_max = definition.width_max_fraction,
                 height_min = definition.height_min,
                 height_max = definition.height_max,
             ),
@@ -1655,14 +1643,13 @@ function add_series_perturbation!(controller::QMLController)
     restore_series_base_display!(controller)
     segment = series.selected_segment
     variable = series.selected_variable
-    displayed_length = series_display_length(controller.app, segment)
     perturbation = RD.SeriesPerturbation(
         id = series.next_perturbation_id,
         segment = segment,
         variable = variable,
         position = series.selected_position,
-        width_min = 0.05 * displayed_length,
-        width_max = 0.10 * displayed_length,
+        width_min = 0.05,
+        width_max = 0.10,
         height_min = 1.0,
         height_max = 2.0,
     )
@@ -1696,6 +1683,14 @@ function delete_series_perturbation!(controller::QMLController, id_value)
 end
 
 
+function parse_series_width(value, label::AbstractString)
+    width = parse_finite_qml_number(value, label)
+    0.0 < width <= 1.0 ||
+        error("$label is a fraction of the panel length and must be greater than 0 and at most 1.")
+    return width
+end
+
+
 function update_series_perturbation!(controller::QMLController, id_value, field_value, value)
     series = controller.series
     series.running[] && return nothing
@@ -1706,21 +1701,18 @@ function update_series_perturbation!(controller::QMLController, id_value, field_
     previous_segment = perturbation.segment
 
     if field == "panel"
-        old_length = series_display_length(controller.app, perturbation.segment)
+        # Fractions of the panel length need no rescaling for another panel.
         perturbation.segment = clamp(Int(value), 1, length(controller.app.simulations))
-        new_length = series_display_length(controller.app, perturbation.segment)
-        scale = old_length > 0.0 ? new_length / old_length : 1.0
-        perturbation.position *= scale
-        perturbation.width_min *= scale
-        perturbation.width_max *= scale
     elseif field == "variable"
         perturbation.variable = Int(value)
     elseif field == "position"
-        perturbation.position = parse_finite_qml_number(value, "Position")
+        displayed_length = series_display_length(controller.app, perturbation.segment)
+        displayed_length > 0.0 || error("The panel has zero length.")
+        perturbation.position = parse_finite_qml_number(value, "Position") / displayed_length
     elseif field == "widthMin"
-        perturbation.width_min = parse_finite_qml_number(value, "Width minimum")
+        perturbation.width_min = parse_series_width(value, "Width minimum")
     elseif field == "widthMax"
-        perturbation.width_max = parse_finite_qml_number(value, "Width maximum")
+        perturbation.width_max = parse_series_width(value, "Width maximum")
     elseif field == "heightMin"
         perturbation.height_min = parse_finite_qml_number(value, "Height minimum")
     elseif field == "heightMax"
@@ -1836,21 +1828,18 @@ function series_runtime_perturbations(
 
     for perturbation in controller.series.perturbations
         template = templates[perturbation.segment]
-        display_length = series_display_length(controller.app, perturbation.segment)
-        display_length > 0.0 || error("Selected panel has zero displayed length.")
         solver_length = template.boundary_condition == :periodic ?
             last(template.x) - first(template.x) + template.dx :
             max(last(template.x) - first(template.x), 0.0)
-        scale = solver_length / display_length
         push!(
             runtime_perturbations,
             RD.SeriesPerturbation(
                 id = perturbation.id,
                 segment = perturbation.segment,
                 variable = perturbation.variable,
-                position = first(template.x) + perturbation.position * scale,
-                width_min = perturbation.width_min * scale,
-                width_max = perturbation.width_max * scale,
+                position = first(template.x) + perturbation.position * solver_length,
+                width_min = perturbation.width_min * solver_length,
+                width_max = perturbation.width_max * solver_length,
                 height_min = perturbation.height_min,
                 height_max = perturbation.height_max,
             ),
@@ -2196,7 +2185,7 @@ function clear_series_perturbations!(controller::QMLController)
     clear_panel_preset_state!(controller)
     series.selected_segment = 1
     series.selected_variable = 1
-    series.selected_position = series_default_position(controller.app, 1)
+    series.selected_position = 0.5
     series.status = "Add at least one perturbation"
     clear_series_previews!(controller)
     clear_series_position_marker!(controller)
@@ -2217,7 +2206,10 @@ function remap_series_after_split!(
     controller::QMLController,
     split_segment::Int,
     split_position::Float64,
+    parent_length::Float64,
 )
+    # Positions and widths are fractions of a panel: convert them from the
+    # parent panel to the half each perturbation falls into.
     # Both halves inherit the initial values; perturbations that came from a
     # preset no longer match it, so a non-empty panel becomes custom.
     series = controller.series
@@ -2227,12 +2219,24 @@ function remap_series_after_split!(
     insert!(series.panel_initial_values, split_segment + 1, copy(series.panel_initial_values[split_segment]))
     insert!(series.custom_sets, split_segment + 1, nothing)
 
+    left_length = series_display_length(controller.app, split_segment)
+    right_length = series_display_length(controller.app, split_segment + 1)
+
     for perturbation in controller.series.perturbations
         if perturbation.segment > split_segment
             perturbation.segment += 1
-        elseif perturbation.segment == split_segment && perturbation.position > split_position
-            perturbation.segment += 1
-            perturbation.position -= split_position
+        elseif perturbation.segment == split_segment
+            centre = perturbation.position * parent_length
+            if centre > split_position
+                perturbation.segment += 1
+                perturbation.position = (centre - split_position) / right_length
+                perturbation.width_min *= parent_length / right_length
+                perturbation.width_max *= parent_length / right_length
+            else
+                perturbation.position = centre / left_length
+                perturbation.width_min *= parent_length / left_length
+                perturbation.width_max *= parent_length / left_length
+            end
         end
     end
 
@@ -2267,10 +2271,22 @@ function remap_series_after_merge!(
     deleteat!(series.panel_initial_values, right_segment)
     deleteat!(series.custom_sets, right_segment)
 
+    # Positions and widths are fractions of a panel: convert them to the
+    # merged panel.
+    merged_length = series_display_length(controller.app, left_segment)
+    right_display_length = merged_length - left_display_length
+
     for perturbation in controller.series.perturbations
-        if perturbation.segment == right_segment
+        if perturbation.segment == left_segment
+            perturbation.position *= left_display_length / merged_length
+            perturbation.width_min *= left_display_length / merged_length
+            perturbation.width_max *= left_display_length / merged_length
+        elseif perturbation.segment == right_segment
             perturbation.segment = left_segment
-            perturbation.position += left_display_length
+            perturbation.position =
+                (left_display_length + perturbation.position * right_display_length) / merged_length
+            perturbation.width_min *= right_display_length / merged_length
+            perturbation.width_max *= right_display_length / merged_length
         elseif perturbation.segment > right_segment
             perturbation.segment -= 1
         end
@@ -2327,27 +2343,6 @@ function remap_series_after_delete!(controller::QMLController, deleted_segment::
     return nothing
 end
 
-
-function rescale_series_perturbations!(controller::QMLController, factor::Float64)
-    custom_perturbations = (
-        perturbation
-        for custom in controller.series.custom_sets if custom !== nothing
-        for perturbation in custom.perturbations
-    )
-
-    for perturbation in Iterators.flatten((controller.series.perturbations, custom_perturbations))
-        perturbation.position *= factor
-        perturbation.width_min *= factor
-        perturbation.width_max *= factor
-    end
-
-    controller.series.selected_position *= factor
-    clamp_all_series_perturbations!(controller)
-    controller.series.editor_open && show_series_previews!(controller)
-    controller.series.editor_open && update_series_position_marker!(controller)
-    refresh_series_bindings!(controller)
-    return nothing
-end
 
 function toggle_running!(controller::QMLController)
     return guarded_action(controller, "Simulation control failed") do
@@ -2496,7 +2491,6 @@ end
 function set_domain_exponent!(controller::QMLController, exponent)
     return guarded_action(controller, "Domain rescale failed") do
         controller.series.running[] && error("Stop the Series run before changing the domain scale.")
-        previous_display_scale = controller.app.plot_panel.domain_length_scale
         controller.diffusion_scale = 10.0^Float64(exponent)
         RD.set_diffusion_scale_app!(
             controller.app,
@@ -2504,12 +2498,6 @@ function set_domain_exponent!(controller::QMLController, exponent)
             steps_per_frame = controller.steps_per_frame,
             worker_sleep_time = controller.worker_sleep_time,
         )
-        current_display_scale = controller.app.plot_panel.domain_length_scale
-        previous_display_scale > 0.0 &&
-            rescale_series_perturbations!(
-                controller,
-                current_display_scale / previous_display_scale,
-            )
         if controller.bindings.series_mode[]
             templates, base_snapshots, generation = capture_series_base!(controller)
             series = controller.series
@@ -2526,6 +2514,8 @@ function set_domain_exponent!(controller::QMLController, exponent)
             end
             series.editor_open && show_series_previews!(controller)
         end
+        # Fractions are unchanged; the axis-unit values shown are not.
+        refresh_series_bindings!(controller)
         update_model_bindings!(controller)
         refresh_current_equation_image!(controller)
     end
@@ -2672,7 +2662,7 @@ function split_selected_segment!(controller::QMLController)
         )
         success || error("The selected split point is not valid.")
         update_partition_bindings!(controller; reset_index = true)
-        remap_series_after_split!(controller, split_segment, split_position)
+        remap_series_after_split!(controller, split_segment, split_position, old_display_length)
     end
 end
 
@@ -3310,7 +3300,7 @@ function create_qml_controller(;
         Threads.Atomic{Bool}(false),
         Threads.Atomic{Bool}(false),
     )
-    controller.series.selected_position = series_default_position(controller.app, 1)
+    controller.series.selected_position = 0.5
     refresh_series_bindings!(controller)
     report_startup_stage("Create QML controller", stage_started_ns)
 
