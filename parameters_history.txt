@@ -1,0 +1,276 @@
+════════════════════════════════════════════════════════════════════════
+2026-10-07 13:57:20   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  0.01     Dv  1        a   1.5
+  b   2        pu  0        pv  0
+  μu  0.5      μv  1        ρ0  1
+  ρ1  0.5      ρa  0.88     ρb  7e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann     Domain length  1
+  Rescale        10^0        Maximum dt     0.01
+  Panels         1           Panel lengths  1
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: None
+     no perturbations
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 13:59:56   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  2.01e-3     Dv  0.201       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.88        ρb  7e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.231
+  Rescale        10^0.697     Maximum dt     0.01
+  Panels         1            Panel lengths  2.231
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.12        0.03        0.06          1.0          2.0
+      3   u          2.23        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:03:26   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  2.01e-3     Dv  0.201       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.88        ρb  7e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.231
+  Rescale        10^0.697     Maximum dt     0.01
+  Panels         1            Panel lengths  2.231
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.12        0.03        0.06          1.4          2.8
+      3   u          2.23        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:09:57   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  2.01e-3     Dv  0.201       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.871       ρb  7e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.231
+  Rescale        10^0.697     Maximum dt     0.01
+  Panels         1            Panel lengths  2.231
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.12        0.03        0.06          1.0          2.0
+      3   u          2.23        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:15:26   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  1.87e-3     Dv  0.187       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.73        ρb  8e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.31
+  Rescale        10^0.727     Maximum dt     0.01
+  Panels         1            Panel lengths  2.31
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.16        0.03        0.06          1.0          2.0
+      3   u          2.31        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:16:46   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  1.87e-3     Dv  0.187       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.73        ρb  8.1e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.31
+  Rescale        10^0.727     Maximum dt     0.01
+  Panels         1            Panel lengths  2.31
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.16        0.03        0.06          1.0          2.0
+      3   u          2.31        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:18:40   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  1.87e-3     Dv  0.187       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.73        ρb  8.2e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.31
+  Rescale        10^0.727     Maximum dt     0.01
+  Panels         1            Panel lengths  2.31
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.16        0.03        0.06          1.2          2.4
+      3   u          2.31        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:20:42   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  1.87e-3     Dv  0.187       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.73        ρb  8.2e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.31
+  Rescale        10^0.727     Maximum dt     0.01
+  Panels         1            Panel lengths  2.31
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.16        0.03        0.06          1.2          2.3
+      3   u          2.31        0.06        0.13          2.0          4.0
+
+
+════════════════════════════════════════════════════════════════════════
+2026-10-07 14:22:51   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du  1.87e-3     Dv  0.187       a   1.5
+  b   2           pu  0           pv  0
+  μu  0.5         μv  1           ρ0  1
+  ρ1  0.5         ρa  0.73        ρb  8.2e-5
+  ρc  10
+  Spatial profile   ExpHeadFoot
+
+Domain
+  Boundary       Neumann      Domain length  2.31
+  Rescale        10^0.727     Maximum dt     0.01
+  Panels         1            Panel lengths  2.31
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          2.0          4.0
+      2   u          1.16        0.03        0.06          1.4          2.2
+      3   u          2.31        0.06        0.13          2.0          4.0
+
+
