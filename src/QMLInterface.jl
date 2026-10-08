@@ -8,6 +8,7 @@ using GLMakie
 import CairoMakie
 using CxxWrap
 using Base64
+using Dates
 using LaTeXStrings
 using Logging
 using QML
@@ -81,6 +82,8 @@ mutable struct QMLBindings
     equation_values_visible::Observable{Bool}
     domain_resolution::Observable{Int}
     main_window_visible::Observable{Bool}
+    notice::Observable{String}
+    # Short confirmation shown by the main window, e.g. after Save.
 end
 
 
@@ -2860,6 +2863,9 @@ function run_qml_event_loop!(
 end
 
 
+include("ParameterHistory.jl")
+
+
 function register_qml_functions!(controller::QMLController)
     # Callbacks whose functions do not report their own errors. An exception
     # escaping a QML callback terminates the application, so it is shown as a
@@ -2871,6 +2877,7 @@ function register_qml_functions!(controller::QMLController)
     QML.qmlfunction("refreshUI", () -> refresh_qml_state!(controller))
     QML.qmlfunction("toggleRunning", () -> toggle_running!(controller))
     QML.qmlfunction("saveCurrentState", () -> save_current_state!(controller))
+    QML.qmlfunction("saveParameters", () -> save_parameter_history!(controller))
     QML.qmlfunction(
         "restoreSavedState",
         () -> enqueue_graphics_action!(
@@ -3099,6 +3106,7 @@ function qml_property_map(
         "equationValuesVisible" => bindings.equation_values_visible,
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
+        "notice" => bindings.notice,
         "modelCatalogJson" => Observable(catalog_json),
         "message" => bindings.message,
         "graphicsBusy" => controller.graphics_busy,
@@ -3275,6 +3283,7 @@ function create_qml_controller(;
         Observable(false),
         Observable(16),
         Observable(false),
+        Observable(""),
     )
     controller = QMLController(
         app,
