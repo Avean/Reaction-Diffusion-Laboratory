@@ -8,6 +8,11 @@
 # controls and threads, while this file owns reproducible perturbations,
 # stationary-state checks and one realization of a series.
 
+# Separates the random stream of spatial profiles from the perturbation
+# stream of the same realization.
+const SERIES_PROFILE_SEED_OFFSET = 0x9e3779b97f4a7c15
+
+
 Base.@kwdef mutable struct SeriesPerturbation
     id::Int
     segment::Int
@@ -377,6 +382,14 @@ function run_series_realization!(
     validate_series_settings(settings, first(templates).model.nvars)
     run_rng = Xoshiro(settings.seed + UInt64(run_index - 1))
     simulations = [instantiate_series_template(template, settings) for template in templates]
+    # Spatial profiles with a random generator argument are drawn anew in
+    # every realization. They use their own generator, so the perturbation
+    # draws of a given seed stay the same as without random profiles.
+    profile_rng = Xoshiro(settings.seed + UInt64(run_index - 1) + SERIES_PROFILE_SEED_OFFSET)
+    if !randomize_partition_spatial_profiles!(simulations, profile_rng) &&
+       !isempty(first(simulations).model.spatial_profile_sets)
+        @warn "Spatial profiles are not redrawn in this series: the panels were swapped or deleted, so they keep the profile pieces they carry." maxlog = 1
+    end
     apply_series_perturbations!(simulations, perturbations, run_rng, settings)
     tasks = Task[]
 

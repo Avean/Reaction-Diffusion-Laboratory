@@ -218,9 +218,13 @@ function _wrap_one_spatial_profile_set(
         profile_fun isa Function ||
             error("Spatial profile $(name) must be a function.")
 
-        wrapped_profile_fun = function (x, p_dict)
+        # A profile may take a third argument: the random generator of a
+        # series realization, or nothing outside series mode.
+        wrapped_profile_fun = function (x, p_dict, rng = nothing)
             p = _make_named_parameters(p_dict, param_names)
-            return profile_fun(x, p)
+            return applicable(profile_fun, x, p, rng) ?
+                   profile_fun(x, p, rng) :
+                   profile_fun(x, p)
         end
 
         push!(
@@ -356,9 +360,12 @@ function _evaluate_spatial_profile_for_parameter(
     x::AbstractVector,
     p_dict::AbstractDict{Symbol},
     profile_name::String,
-    profile_fun::Function,
+    profile_fun::Function;
+    rng = nothing,
 )
-    raw = profile_fun(x, p_dict)
+    raw = applicable(profile_fun, x, p_dict, rng) ?
+          profile_fun(x, p_dict, rng) :
+          profile_fun(x, p_dict)
 
     y = if raw isa Number
         fill(Float64(raw), length(x))

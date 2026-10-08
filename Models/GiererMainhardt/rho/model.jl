@@ -19,6 +19,25 @@
 # ============================================================
 
 
+# Exponential profiles ρ(x) = ρa + ρb exp(ρc x), evaluated once for the left
+# and once for the right half of the domain. In a series realization (rng
+# given) each half draws its own ρa, ρb, ρc, varied by a relative ±ρσa, ±ρσb,
+# ±ρσc (uniform); outside series mode both halves use the nominal values.
+function rho_exponential_halves(x, p, rng)
+    vary(value, σ) = rng === nothing ? value : value * (1 + σ * (2 * rand(rng) - 1))
+
+    function draw()
+        a = vary(p.ρa, p.ρσa)
+        b = vary(p.ρb, p.ρσb)
+        c = vary(p.ρc, p.ρσc)
+        return @. a + b * exp(c * x)
+    end
+
+    left = draw()
+    right = draw()
+    return left, right, div(length(x), 2)
+end
+
 
 RDModel(
     id = :gierer_meinhardt,
@@ -48,6 +67,12 @@ RDModel(
         ρa = 0.5,
         ρb = 0.5,
         ρc = 1.0,
+
+        # Series mode only: relative variation of ρa, ρb, ρc, drawn
+        # separately for each half of the domain in every realization.
+        ρσa = 0.0,
+        ρσb = 0.0,
+        ρσc = 0.0,
     ),
 
     initial = function (U, x, p)
@@ -133,16 +158,37 @@ RDModel(
             end,
         ),
 
+        # The piece placed in the left half of the domain comes from the
+        # left draw, the piece in the right half from the right draw.
         ExpFootHead = (
-            ρ = (x, p) -> @.(p.ρa + p.ρb * exp(p.ρc * x)),
+            ρ = (x, p, rng) -> begin
+                left, right, H = rho_exponential_halves(x, p, rng)
+
+                return [left[1:H]; right[(H + 1):end]]
+            end,
         ),
 
         ExpHeadFoot = (
-            ρ = (x, p) -> begin
-                H = div(length(x), 2)
-                ρx = @. p.ρa + p.ρb * exp(p.ρc * x)
+            ρ = (x, p, rng) -> begin
+                left, right, H = rho_exponential_halves(x, p, rng)
 
-                return [ρx[(H + 1):end]; ρx[1:H]]
+                return [left[(H + 1):end]; right[1:H]]
+            end,
+        ),
+
+        ExpFootHeadR = (
+            ρ = (x, p, rng) -> begin
+                left, right, H = rho_exponential_halves(x, p, rng)
+
+                return [left[(H + 1):end]; reverse(right[1:H])]
+            end,
+        ),
+
+        ExpHeadFootR = (
+            ρ = (x, p, rng) -> begin
+                left, right, H = rho_exponential_halves(x, p, rng)
+
+                return [reverse(left[1:H]); right[(H + 1):end]]
             end,
         ),
     ),

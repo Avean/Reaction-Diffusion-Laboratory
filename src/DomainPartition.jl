@@ -182,22 +182,14 @@ function resample_partition_params(
 end
 
 
-function refresh_partition_spatial_profile_overrides!(
-    simulations::Vector{SimulationState},
+function evaluate_partition_spatial_profiles(
+    simulations::Vector{SimulationState};
+    rng = nothing,
 )
-    isempty(simulations) && return nothing
-
+    # The active profiles evaluated on the whole domain and divided between
+    # the panels: profile name => values of every panel.
     model = first(simulations).model
-
-    for sim in simulations
-        sim.model.id == model.id ||
-            error("All domain segments must use the same model.")
-
-        clear_spatial_profile_overrides!(sim)
-    end
-
-    isempty(model.spatial_profile_sets) &&
-        return nothing
+    isempty(model.spatial_profile_sets) && return Pair{String, Vector{Vector{Float64}}}[]
 
     first_params = first(simulations).params
     set_index = _active_spatial_profile_set_index(
@@ -210,26 +202,72 @@ function refresh_partition_spatial_profile_overrides!(
     global_xmax = last(last(simulations).x)
     global_x = collect(range(global_xmin, global_xmax; length = reference_N))
 
-    for (profile_name, profile_fun) in profiles
-        global_values = _evaluate_spatial_profile_for_parameter(
-            global_x,
-            first_params,
-            profile_name,
-            profile_fun,
-        )
+    return [
+        profile_name => begin
+            global_values = _evaluate_spatial_profile_for_parameter(
+                global_x,
+                first_params,
+                profile_name,
+                profile_fun;
+                rng = rng,
+            )
+            [interpolate_partition_values(global_x, global_values, sim.x) for sim in simulations]
+        end
+        for (profile_name, profile_fun) in profiles
+    ]
+end
 
+
+function refresh_partition_spatial_profile_overrides!(
+    simulations::Vector{SimulationState};
+    rng = nothing,
+)
+    isempty(simulations) && return nothing
+
+    model = first(simulations).model
+
+    for sim in simulations
+        sim.model.id == model.id ||
+            error("All domain segments must use the same model.")
+
+        clear_spatial_profile_overrides!(sim)
+    end
+
+    for (profile_name, panel_values) in evaluate_partition_spatial_profiles(simulations; rng = rng)
         override_key = spatial_profile_override_key(profile_name)
 
-        for sim in simulations
-            sim.params[override_key] = interpolate_partition_values(
-                global_x,
-                global_values,
-                sim.x,
-            )
+        for (sim, values) in zip(simulations, panel_values)
+            sim.params[override_key] = values
         end
     end
 
     return nothing
+end
+
+
+function randomize_partition_spatial_profiles!(
+    simulations::Vector{SimulationState},
+    rng,
+)
+    # Draws the active profiles anew for one series realization; profiles
+    # without a random generator argument come out unchanged. The draw
+    # needs the panels in their natural order: after Swap or Delete a panel
+    # carries its own piece of the profile, which a fresh evaluation on the
+    # whole domain would reassign, so those profiles are kept as they are.
+    isempty(simulations) && return false
+    isempty(first(simulations).model.spatial_profile_sets) && return false
+
+    for (profile_name, panel_values) in evaluate_partition_spatial_profiles(simulations)
+        override_key = spatial_profile_override_key(profile_name)
+
+        for (sim, values) in zip(simulations, panel_values)
+            haskey(sim.params, override_key) && isapprox(sim.params[override_key], values) ||
+                return false
+        end
+    end
+
+    refresh_partition_spatial_profile_overrides!(simulations; rng = rng)
+    return true
 end
 
 
