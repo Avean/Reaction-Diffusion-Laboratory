@@ -377,6 +377,7 @@ function run_series_realization!(
     cancelled::Function = () -> false,
     on_snapshot::Function = (_, _) -> nothing,
     on_residual::Function = (_, _) -> nothing,
+    on_profiles::Function = _ -> nothing,
 )
     isempty(templates) && error("A series realization needs at least one panel.")
     validate_series_settings(settings, first(templates).model.nvars)
@@ -390,6 +391,9 @@ function run_series_realization!(
        !isempty(first(simulations).model.spatial_profile_sets)
         @warn "Spatial profiles are not redrawn in this series: the panels were swapped or deleted, so they keep the profile pieces they carry." maxlog = 1
     end
+    # The profiles of this realization, for the live preview.
+    isempty(first(simulations).model.spatial_profile_sets) ||
+        on_profiles(current_spatial_profile_values(simulations))
     apply_series_perturbations!(simulations, perturbations, run_rng, settings)
     tasks = Task[]
 

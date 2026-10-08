@@ -146,6 +146,11 @@ mutable struct SeriesController
     # Per panel: initial values applied to the panel's series template.
     custom_sets::Vector{Union{Nothing, CustomPanelSet}}
     # Per panel: the remembered "Custom" perturbation set, if any.
+    latest_profiles::Union{Nothing, Vector{Dict{String, Vector{Float64}}}}
+    # Spatial profiles of the running realization for the live preview;
+    # nothing shows the nominal profiles of the live panels.
+    profile_revision::Int
+    published_profile_revision::Int
 end
 
 
@@ -290,6 +295,9 @@ function empty_series_controller()
         String[],
         Dict{String, Float64}[],
         Union{Nothing, CustomPanelSet}[],
+        nothing,
+        0,
+        0,
     )
 end
 
@@ -1146,6 +1154,8 @@ function refresh_series_runtime!(controller::QMLController)
     task = series.task_ref[]
     publish_snapshots = false
     publish_residuals = false
+    publish_profiles = false
+    profiles = nothing
 
     lock(series.lock)
     try
@@ -1155,6 +1165,8 @@ function refresh_series_runtime!(controller::QMLController)
                 series.base_snapshots...
             ]
             series.snapshot_revision += 1
+            series.latest_profiles = nothing
+            series.profile_revision += 1
             series.finish_restores_base = true
         end
 
@@ -1167,6 +1179,13 @@ function refresh_series_runtime!(controller::QMLController)
             ]
             series.published_snapshot_revision = series.snapshot_revision
             publish_snapshots = true
+        end
+
+        if (series.settings.live_preview || !running) &&
+           series.profile_revision != series.published_profile_revision
+            profiles = series.latest_profiles
+            series.published_profile_revision = series.profile_revision
+            publish_profiles = true
         end
 
         if series.residual_revision != series.published_residual_revision
@@ -1185,6 +1204,16 @@ function refresh_series_runtime!(controller::QMLController)
             RD.refresh_app_from_snapshot!(controller.app, snapshot)
         catch error
             report_error!(controller, "Series display refresh failed", error)
+        end
+    end
+
+    if publish_profiles
+        try
+            profiles === nothing ?
+                RD.refresh_spatial_profile_panel!(controller.app) :
+                RD.show_spatial_profiles!(controller.app, profiles)
+        catch error
+            report_error!(controller, "Series profile display failed", error)
         end
     end
 
@@ -1996,12 +2025,16 @@ function restore_series_base_display!(controller::QMLController)
         series.snapshot_revision += 1
         series.published_snapshot_revision = series.snapshot_revision
         series.published_residual_revision = -1
+        series.latest_profiles = nothing
+        series.profile_revision += 1
+        series.published_profile_revision = series.profile_revision
     finally
         unlock(series.lock)
     end
 
     snapshot = RD.partition_snapshot_from_segments(series.base_snapshots, series.generation)
     RD.refresh_app_from_snapshot!(controller.app, snapshot)
+    RD.refresh_spatial_profile_panel!(controller.app)
     return nothing
 end
 
@@ -2129,6 +2162,15 @@ function launch_series!(controller::QMLController; single_run::Bool)
                         try
                             series.latest_residuals[segment] = residual
                             series.residual_revision += 1
+                        finally
+                            unlock(series.lock)
+                        end
+                    end,
+                    on_profiles = profiles -> begin
+                        lock(series.lock)
+                        try
+                            series.latest_profiles = profiles
+                            series.profile_revision += 1
                         finally
                             unlock(series.lock)
                         end

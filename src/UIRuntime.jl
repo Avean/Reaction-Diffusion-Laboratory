@@ -356,33 +356,70 @@ function public_model_parameter_names(model::ModelSpec)
 end
 
 
-function refresh_spatial_profile_panel!(app::AppState)
+function current_spatial_profile_values(simulations::AbstractVector{<:SimulationState})
+    # The active profiles carried by every panel: one name => values table
+    # per panel.
+    isempty(simulations) && return Dict{String, Vector{Float64}}[]
+    model = first(simulations).model
+    isempty(model.spatial_profile_sets) && return Dict{String, Vector{Float64}}[]
+    set_index = _active_spatial_profile_set_index(
+        first(simulations).params,
+        model.spatial_profile_sets,
+    )
+    _, profiles = model.spatial_profile_sets[set_index]
+
+    return [
+        Dict{String, Vector{Float64}}(
+            profile_name => Float64.(collect(sim.params[spatial_profile_override_key(profile_name)]))
+            for (profile_name, _) in profiles
+            if haskey(sim.params, spatial_profile_override_key(profile_name))
+        )
+        for sim in simulations
+    ]
+end
+
+
+function show_spatial_profiles!(
+    app::AppState,
+    panel_profiles::AbstractVector{<:AbstractDict{String}},
+)
+    # Draws the given profile values (one table per panel) on the red
+    # profile plots, e.g. the profiles drawn for a series realization.
     model = app.sim.model
     isempty(model.spatial_profile_sets) && return nothing
-    ensure_partition_spatial_profile_overrides!(app.simulations)
     set_index = _active_spatial_profile_set_index(
         app.sim.params,
         model.spatial_profile_sets,
     )
     _, profiles = model.spatial_profile_sets[set_index]
+    panel = app.plot_panel
 
     for (profile_index, (profile_name, _)) in enumerate(profiles)
-        key = spatial_profile_override_key(profile_name)
         row_values = Float64[]
         axes = Axis[]
-        for segment in eachindex(app.simulations)
-            segment <= length(app.plot_panel.segment_profile_observables) || continue
-            profile_index <= length(app.plot_panel.segment_profile_observables[segment]) || continue
-            values = app.simulations[segment].params[key]
-            profile_values = Float64.(collect(values))
-            app.plot_panel.segment_profile_observables[segment][profile_index][] = profile_values
-            append!(row_values, finite_values(profile_values))
-            profile_index <= length(app.plot_panel.segment_profile_axes[segment]) &&
-                push!(axes, app.plot_panel.segment_profile_axes[segment][profile_index])
+        for segment in eachindex(panel_profiles)
+            segment <= length(panel.segment_profile_observables) || continue
+            profile_index <= length(panel.segment_profile_observables[segment]) || continue
+            values = get(panel_profiles[segment], profile_name, nothing)
+            values === nothing && continue
+            observable = panel.segment_profile_observables[segment][profile_index]
+            length(values) == length(observable[]) || continue
+            observable[] = values
+            append!(row_values, finite_values(values))
+            profile_index <= length(panel.segment_profile_axes[segment]) &&
+                push!(axes, panel.segment_profile_axes[segment][profile_index])
         end
         isempty(axes) || set_axes_y_limits_from_values!(axes, row_values)
     end
 
+    return nothing
+end
+
+
+function refresh_spatial_profile_panel!(app::AppState)
+    isempty(app.sim.model.spatial_profile_sets) && return nothing
+    ensure_partition_spatial_profile_overrides!(app.simulations)
+    show_spatial_profiles!(app, current_spatial_profile_values(app.simulations))
     return nothing
 end
 
