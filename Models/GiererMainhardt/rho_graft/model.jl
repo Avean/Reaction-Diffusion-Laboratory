@@ -9,24 +9,24 @@
 #     u_t = Du u_xx + a rho(x) u^2 / (v + 1) - mu_u u + p_u
 #     v_t = Dv v_xx + b rho(x) u^2 - mu_v v + p_v
 #
-# rho(x) is one of two profiles (Linear, Gauss). A graft replaces it on
-# [ρpeak_pos ± ρpeak_width / 2] by the constant ρpeak_height; position and
-# width are fractions of the whole domain, and a width of 0 removes it.
+# rho(x) is one of two profiles (Linear, Gauss). A graft adds ρpeak_height
+# to it on [ρpeak_pos ± ρpeak_width / 2]; position and width are fractions
+# of the whole domain, and a height (or width) of 0 leaves rho(x) unchanged.
 #
 # ============================================================
 
 
-# Replaces the profile by a tower of height ρpeak_height on the graft
-# interval of the whole domain.
+# Raises the profile by ρpeak_height on the graft interval of the whole
+# domain, so the top of the tower follows the profile below it.
 function rho_graft_with_peak(ρx, x, p)
-    p.ρpeak_width > 0 || return ρx
+    p.ρpeak_width > 0 && p.ρpeak_height != 0 || return ρx
 
     xmin = first(x)
     length_x = last(x) - xmin
     centre = xmin + p.ρpeak_pos * length_x
     half_width = p.ρpeak_width * length_x / 2
 
-    return @. ifelse(abs(x - centre) <= half_width, p.ρpeak_height, ρx)
+    return @. ifelse(abs(x - centre) <= half_width, ρx + p.ρpeak_height, ρx)
 end
 
 
@@ -34,7 +34,7 @@ RDModel(
     id = :gierer_meinhardt_rho_graft,
 
     display_name = "Rho graft",
-    description = "A Gierer-Meinhardt model modulated by the source density rho(x), linear or Gaussian-decaying, with an optional graft: a tower of given height and width that replaces rho(x) at a chosen position.",
+    description = "A Gierer-Meinhardt model modulated by the source density rho(x), linear or Gaussian-decaying, with an optional graft: a tower of given height and width added to rho(x) at a chosen position.",
 
     variables = (:u, :v),
 
@@ -56,14 +56,15 @@ RDModel(
         ρ1 = 0.5,
 
         # Gauss profile: ρ(x) = ρa + ρb exp(-ρc x²), decreasing towards ρa
-        ρa = 0.0,
-        ρb = 1.5,
-        ρc = 5.0,
+        ρa = 0.7,
+        ρb = 3.5,
+        ρc = 15.0,
 
-        # Graft: position and width as fractions of the domain (width 0 = off)
+        # Graft: ρpeak_height is added to ρ(x) (0 = no graft); position and
+        # width are fractions of the whole domain.
         ρpeak_pos = 0.5,
-        ρpeak_height = 2.0,
-        ρpeak_width = 0.0,
+        ρpeak_height = 0.0,
+        ρpeak_width = 0.05,
     ),
 
     initial = function (U, x, p)
