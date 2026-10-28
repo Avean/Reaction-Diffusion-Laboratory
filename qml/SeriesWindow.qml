@@ -676,7 +676,7 @@ Window {
                         Slider {
                             id: seriesDomainSlider
                             Layout.fillWidth: true
-                            from: 0
+                            from: -2
                             to: 3
                             stepSize: 3 / Math.max(1, Number(ui.domainResolution) - 1)
                             value: 2 * Math.log(Number(ui.domainLength)) / Math.LN10
