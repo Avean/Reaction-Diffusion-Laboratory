@@ -19,6 +19,9 @@ the mouse, split the domain into independent panels, and run statistical
 - **Domain partitioning** – split the domain into panels, merge, swap or
   delete them, and run them independently or synchronised.
 - **Checkpoints** – save and restore the full simulation state.
+- **Save graph** – save the current plots (PNG and PDF), their data (CSV)
+  and a Jupyter notebook that draws them again to a new folder in
+  `saved_graphs/`; in series mode the series results of every panel too.
 - **Series mode** – run many realisations with random perturbations until
   each reaches a steady state, detect the resulting peaks ("heads") and
   collect statistics of head counts, positions and configurations.

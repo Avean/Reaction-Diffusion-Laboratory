@@ -2906,6 +2906,7 @@ end
 
 
 include("ParameterHistory.jl")
+include("GraphExport.jl")
 
 
 function register_qml_functions!(controller::QMLController)
@@ -2920,6 +2921,7 @@ function register_qml_functions!(controller::QMLController)
     QML.qmlfunction("toggleRunning", () -> toggle_running!(controller))
     QML.qmlfunction("saveCurrentState", () -> save_current_state!(controller))
     QML.qmlfunction("saveParameters", () -> save_parameter_history!(controller))
+    QML.qmlfunction("saveGraphs", () -> save_graphs!(controller))
     QML.qmlfunction(
         "restoreSavedState",
         () -> enqueue_graphics_action!(

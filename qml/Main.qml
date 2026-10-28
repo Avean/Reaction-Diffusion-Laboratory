@@ -235,6 +235,15 @@ ApplicationWindow {
                 ToolTip.text: "Append the model, domain and series parameters to parameters_history.txt"
             }
 
+            // Always available; in series mode it adds the series results.
+            TileButton {
+                text: "Save graph"
+                onClicked: Julia.saveGraphs()
+
+                ToolTip.visible: hovered
+                ToolTip.text: "Save the current graphs (PNG, PDF), their data (CSV) and a Jupyter notebook to a new folder in saved_graphs"
+            }
+
             Item {
                 Layout.fillWidth: true
             }
