@@ -148,6 +148,14 @@ Window {
                 }
 
                 TileButton {
+                    text: "Save graph"
+                    onClicked: Julia.saveGraphs()
+
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Save the current graphs, the series results (PNG, PDF, CSV) and a Jupyter notebook to a new folder in saved_graphs"
+                }
+
+                TileButton {
                     text: "Close series mode"
                     enabled: !ui.seriesRunning
                     onClicked: Julia.setSeriesMode(false)
@@ -730,5 +738,13 @@ Window {
                 wrapMode: Text.Wrap
             }
         }
+    }
+
+    // Short confirmation (e.g. after Save graph) under the header bar.
+    NoticeToast {
+        z: 10
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 60
     }
 }

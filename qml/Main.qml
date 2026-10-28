@@ -1250,47 +1250,12 @@ ApplicationWindow {
         }
     }
 
-    // Short confirmation (e.g. after Save) under the top bar; fades out.
-    Rectangle {
-        id: noticeToast
-        property string notice: ui.notice
+    // Short confirmation (e.g. after Save) under the top bar.
+    NoticeToast {
         z: 61
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: 10
-        width: noticeText.implicitWidth + 28
-        height: Theme.tileHeight + 4
-        radius: Theme.tileRadius
-        color: Theme.success
-        opacity: 0
-        visible: opacity > 0
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 250
-            }
-        }
-
-        onNoticeChanged: {
-            if (notice.length === 0)
-                return
-            opacity = 1
-            noticeTimer.restart()
-        }
-
-        Text {
-            id: noticeText
-            anchors.centerIn: parent
-            text: noticeToast.notice
-            color: "white"
-            font.bold: true
-        }
-
-        Timer {
-            id: noticeTimer
-            interval: 3000
-            onTriggered: noticeToast.opacity = 0
-        }
     }
 
     Shortcut {
