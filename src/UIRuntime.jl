@@ -561,10 +561,10 @@ end
 
 
 # ============================================================
-# In-memory save / restore
+# Capture / restore of the complete state (see SaveLoad.jl for the files)
 # ============================================================
 
-function save_simulation_state!(app::AppState)
+function capture_simulation_state(app::AppState)
     length(app.simulations) == length(app.segment_runtimes) ||
         error("Segment runtime count does not match the simulation partition.")
 
@@ -615,7 +615,7 @@ function save_simulation_state!(app::AppState)
             end
         end
 
-        app.saved_state[] = SavedSimulationState(
+        return SavedSimulationState(
             model_id,
             saved_segments,
             app.plot_panel.domain_length_scale,
@@ -627,26 +627,17 @@ function save_simulation_state!(app::AppState)
     finally
         unlock(app.simlock)
     end
-
-    return app.saved_state[]
 end
 
 
-function clear_saved_simulation_state!(app::AppState)
-    app.saved_state[] = nothing
-    return nothing
-end
-
-
-function restore_saved_simulation_state_app!(
-    app::AppState;
+function restore_simulation_state_app!(
+    app::AppState,
+    saved::SavedSimulationState;
     plot_grid::GridLayout,
     title_obs,
     reltol::Float64 = 1e-5,
     abstol::Float64 = 1e-7,
 )
-    saved = app.saved_state[]
-    saved === nothing && error("No saved simulation state is available.")
     isempty(saved.segments) && error("Saved simulation state has no segments.")
     saved.model_id == app.sim.model.id ||
         error("The saved state belongs to a different model.")
@@ -689,6 +680,10 @@ function restore_saved_simulation_state_app!(
 
             push!(restored_simulations, sim)
         end
+
+        # A profile set that changed since the state was saved is evaluated anew.
+        partition_spatial_profile_overrides_are_valid(restored_simulations) ||
+            refresh_partition_spatial_profile_overrides!(restored_simulations)
 
         app.simulations = restored_simulations
         app.sim = first(restored_simulations)
@@ -1052,7 +1047,6 @@ function switch_model_app!(
 
     try
         app.generation[] = app.generation[] + 1
-        clear_saved_simulation_state!(app)
         empty!(app.parameter_overrides)
 
         selected_boundary_condition = isnothing(model.default_boundary_condition) ?

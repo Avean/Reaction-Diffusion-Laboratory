@@ -22,13 +22,15 @@ the mouse, split the domain into independent panels, and run statistical
   directly on the plots.
 - **Domain partitioning** – split the domain into panels, merge, swap or
   delete them, and run them independently or synchronised.
-- **Checkpoints** – save and restore the full simulation state.
-- **Save graph** – save the current plots (PNG and PDF), their data (CSV)
-  and a Jupyter notebook that draws them again to a new folder in
-  `saved_graphs/`; in series mode the series results of every panel too.
+- **Save and Load** – write the complete state of the simulation to a file
+  and load it again later; see [Saves](#saves).
 - **Series mode** – run many realisations with random perturbations until
   each reaches a steady state, detect the resulting peaks ("heads") and
-  collect statistics of head counts, positions and configurations.
+  collect statistics of head counts, positions and configurations. The main
+  window stays usable while no series runs; **Start series** takes the state,
+  parameters, profiles, panels, boundary conditions and domain as they are at
+  that moment and always counts the statistics afresh. **Save series** writes
+  the settings and the head statistics to a file; see [Saves](#saves).
 - **Startup splash** – a progress window with per-stage timing and a Cancel
   button.
 
@@ -45,10 +47,19 @@ automatically at startup. The repository ships with:
 
 `TOML` files next to a `model.jl` are presets for Series mode (initial
 values and perturbations). Each `[[perturbations]]` entry adds one
-perturbation, so a preset can define any number of them:
+perturbation, so a preset can define any number of them. The optional
+`description` is shown under the preset selector and says what the
+perturbations are. `[initial_values]` holds constants for the variables it
+lists. The **Initial condition** switch under the selector decides per panel
+whether a series uses them: **Preset** sets the listed variables to these
+constants on the whole panel and leaves the others in their current state,
+**Current state** starts every variable from the live state. Choosing a preset
+with initial values selects **Preset**; without any, only **Current state**
+exists:
 
 ```toml
-name = "u: three bumps"
+name = "u three bumps"
+description = "Adds noise to u at three points."
 
 [initial_values]
 u = 0.0
@@ -164,6 +175,48 @@ Use `--threads=auto` so that domain panels and series runs use separate
 threads. From an open REPL, `include("app.jl")` works as well; a second
 start in the same session is much faster.
 
+## Saves
+
+Every save is one JSON file in `saves/`, named after its date and the optional
+name given when saving. The folder is not tracked by git.
+
+```
+saves/simulation/<model id>/2026-11-05_18-41-07_my name.json
+saves/series/<model id>/2026-11-05_20-00-00.json
+```
+
+**Save** in the main window stores the simulation: the variables of every panel,
+all parameters and profiles, the domain, the boundary conditions and the time
+step, but nothing of the series. **Load** lists the saves of the active model
+with a preview and restores one; the series setup stays as it is, except for
+the perturbations of panels that no longer exist, and the series results are
+cleared. Both work in series mode too, but not while a series runs. If the model
+changed since the save, new parameters keep their default and removed ones are
+ignored, with a message; a save with other variables cannot be loaded.
+
+**Save series** in the series window stores what the last Start used (settings,
+model parameters, active profile set, domain, boundary conditions, and per panel
+the preset, the initial condition and the perturbations) with its results per
+panel: `location_counts` over the grid given by `x0`, `dx` and `N`, `head_counts`
+(entry `k` counts the realizations with `k` heads, from 0), `not_converged` and
+`configurations`. During a run it stores the results so far; `completed_runs`
+tells how many. These files are for processing elsewhere: the application does
+not read them, and they hold no patterns.
+
+Reading a save in Python takes only the standard library:
+
+```python
+import json
+
+with open(path, encoding="utf-8") as file:
+    save = json.load(file)
+u = save["panels"][0]["u"]
+```
+
+The `id` in a `model.jl` names the folder of its saves, so it must be unique
+among the models, which the application checks at startup, and must not change
+afterwards.
+
 ## Project layout
 
 ```
@@ -173,12 +226,14 @@ src/
   ModelDSL.jl              RDModel definition layer
   Simulation.jl            TRBDF2 integration, snapshots
   SeriesSimulation.jl      series runs and steady-state detection
+  SaveLoad.jl              save files of the simulation and the series
   HeadDetection.jl         peak ("head") detection
   QMLInterface.jl          bridge between Julia and the QML interface
   StartupSplash.jl         startup progress, stages and Cancel
   SplashProcess.jl         the splash window's own process
-qml/                   QML windows (main window, series window, splash)
+qml/                   QML windows (main window, series window, dialogs, splash)
 Models/                model definitions and series presets
+saves/                 saves of the simulation and the series (not tracked)
 ```
 
 ## Platform notes

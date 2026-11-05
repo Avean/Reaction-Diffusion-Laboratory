@@ -7,6 +7,8 @@
 Base.@kwdef struct ModelSpec
     id::Symbol
     # Short internal model identifier, for example :fisher_kpp or :schnakenberg.
+    # Unique among the models and permanent: the save files of a model are
+    # stored under it, so changing it orphans them.
 
     display_name::String
     # Human-readable model name displayed in the user interface.
@@ -198,7 +200,7 @@ end
 
 
 # ============================================================
-# In-memory simulation checkpoint
+# Complete state of the panels, as written to and read from a save file
 # ============================================================
 
 struct SavedSegmentState
@@ -309,13 +311,9 @@ mutable struct AppState
     synchronization_task_ref::Base.RefValue{Union{Nothing, Task}}
     synchronization_status::Observable{String}
 
-    saved_state::Base.RefValue{Union{Nothing, SavedSimulationState}}
-    # One reusable in-memory checkpoint. Model changes invalidate it, while
-    # Reset and domain-topology edits intentionally leave it available.
-
     mouse_perturbations_enabled::Threads.Atomic{Bool}
-    # Cleared while the QML series mode is active, so the plots show the
-    # series previews without reacting to mouse perturbation input.
+    # Cleared while a series runs, so the plots then react neither to mouse
+    # perturbation input nor to the buttons of the profile sets.
 
     parameter_overrides::Dict{Symbol, Float64}
     # Parameter values set by the user for the current model, kept by Reset

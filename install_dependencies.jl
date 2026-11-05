@@ -9,6 +9,7 @@ const REQUIRED_PACKAGES = [
     "CxxWrap",
     "CairoMakie",
     "GLMakie",
+    "JSON",
     "DifferentialEquations",
     "OrdinaryDiffEqSDIRK",
     "LaTeXStrings",

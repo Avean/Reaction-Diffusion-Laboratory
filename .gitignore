@@ -9,3 +9,6 @@ Thumbs.db
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
+
+# Simulation and series saves
+saves/

@@ -19,7 +19,7 @@
 # ============================================================
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_no_k,
 
     display_name = "Basic no K",
     description = "Original Gierer-Meinhardt model withoud production of inhibitor. Only one steady state. Produces patterns for all initial conditions.",

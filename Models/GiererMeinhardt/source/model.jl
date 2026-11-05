@@ -21,7 +21,7 @@
 τ0 = 1e5
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_source,
 
     display_name = "Source",
     description = "A Gierer-Meinhardt variant with an additional source field. The source couples external production into the activator-inhibitor dynamics.",

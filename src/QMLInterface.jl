@@ -9,6 +9,7 @@ import CairoMakie
 using CxxWrap
 using Base64
 using Dates
+import JSON
 using LaTeXStrings
 using Logging
 using QML
@@ -51,7 +52,6 @@ mutable struct QMLBindings
     equation_preferred_width::Observable{Float64}
     perturbation_width::Observable{Float64}
     perturbation_height::Observable{Float64}
-    checkpoint_available::Observable{Bool}
     message::Observable{String}
     series_running::Observable{Bool}
     series_completed_runs::Observable{Int}
@@ -70,25 +70,28 @@ mutable struct QMLBindings
     series_selected_segment::Observable{Int}
     series_selected_variable::Observable{Int}
     series_position::Observable{Float64}
-    series_selected_panel_length::Observable{Float64}
     series_perturbations_json::Observable{String}
     series_presets_json::Observable{String}
     series_selected_preset::Observable{String}
     series_results_json::Observable{String}
     series_mode::Observable{Bool}
-    series_single_run::Observable{Bool}
+    series_preset_initial_available::Observable{Bool}
+    series_use_preset_initial::Observable{Bool}
     model_description::Observable{String}
     model_parameters_json::Observable{String}
     equation_values_visible::Observable{Bool}
     domain_resolution::Observable{Int}
     main_window_visible::Observable{Bool}
     notice::Observable{String}
-    # Short confirmation shown by the main window, e.g. after Save.
+    # Short confirmation shown by the windows, e.g. after Save.
     profile_formula_image::Observable{String}
     profile_formula_width::Observable{Float64}
     profile_formula_note::Observable{String}
     # Formula of the active spatial profile set, shown under Model
     # parameters: an SVG data URI ("" for none), its width and a note.
+    simulation_saves_json::Observable{String}
+    simulation_save_details_json::Observable{String}
+    # The Load window: the saves of the active model and the selected one.
 end
 
 
@@ -97,6 +100,7 @@ struct CustomPanelSet
     # change, restored by choosing "Custom" in the preset selector.
     perturbations::Vector{RD.SeriesPerturbation}
     initial_values::Dict{String, Float64}
+    apply_initial_values::Bool
 end
 
 
@@ -110,13 +114,14 @@ mutable struct SeriesController
     selected_position::Float64
     editor_open::Bool
     preview_items::Vector{Any}
+    preview_geometry::Vector{Float64}
+    # What the preview boxes on the plots were drawn from.
     running::Threads.Atomic{Bool}
     stop_requested::Threads.Atomic{Bool}
     task_ref::Base.RefValue{Union{Nothing, Task}}
     lock::ReentrantLock
-    templates::Vector{RD.SeriesSegmentTemplate}
     base_snapshots::Vector{RD.SimulationSnapshot}
-    # Fixed entry state for this series session; never replaced by a run.
+    # The live state captured by the last Start; a run never replaces it.
     latest_snapshots::Vector{Union{Nothing, RD.SimulationSnapshot}}
     snapshot_revision::Int
     published_snapshot_revision::Int
@@ -128,7 +133,6 @@ mutable struct SeriesController
     not_converged_counts::Vector{Int}
     results_revision::Int
     published_results_revision::Int
-    finish_restores_base::Bool
     pending_preview_update::Symbol
     # :none, :show or :clear. Series preview boxes are Makie plots, so they
     # may only be created or deleted inside the Makie window's render function,
@@ -139,7 +143,6 @@ mutable struct SeriesController
     published_results_segment::Int
     # The results JSON carries the patterns of the selected panel only, so it
     # is published again when the selection changes.
-    single_run::Bool
     configuration_groups::Vector{Vector{RD.HeadConfigurationGroup}}
     # Head configurations of the converged realizations, per panel.
     latest_residuals::Vector{Float64}
@@ -148,7 +151,11 @@ mutable struct SeriesController
     panel_presets::Vector{String}
     # Per panel: a preset key, "none" or "custom".
     panel_initial_values::Vector{Dict{String, Float64}}
-    # Per panel: initial values applied to the panel's series template.
+    # Per panel: the initial values of its preset, remembered in both positions
+    # of the initial-condition switch.
+    panel_apply_initial_values::Vector{Bool}
+    # Per panel: whether a Start applies them ("Preset") or keeps the live
+    # state ("Current state").
     custom_sets::Vector{Union{Nothing, CustomPanelSet}}
     # Per panel: the remembered "Custom" perturbation set, if any.
     latest_profiles::Union{Nothing, Vector{Dict{String, Vector{Float64}}}}
@@ -156,6 +163,9 @@ mutable struct SeriesController
     # nothing shows the nominal profiles of the live panels.
     profile_revision::Int
     published_profile_revision::Int
+    run_setup::Any
+    # What the last Start used, for Save series; later edits do not change it,
+    # so a save always describes the run that produced its results.
 end
 
 
@@ -270,11 +280,11 @@ function empty_series_controller()
         0.5,
         false,
         Any[],
+        Float64[],
         Threads.Atomic{Bool}(false),
         Threads.Atomic{Bool}(false),
         Ref{Union{Nothing, Task}}(nothing),
         ReentrantLock(),
-        RD.SeriesSegmentTemplate[],
         RD.SimulationSnapshot[],
         Union{Nothing, RD.SimulationSnapshot}[],
         0,
@@ -287,42 +297,39 @@ function empty_series_controller()
         Int[],
         0,
         -1,
-        false,
         :none,
         Vector{Vector{Float64}}[],
         Vector{Bool}[],
         0,
-        false,
         Vector{RD.HeadConfigurationGroup}[],
         Float64[],
         0,
         -1,
         String[],
         Dict{String, Float64}[],
+        Bool[],
         Union{Nothing, CustomPanelSet}[],
         nothing,
         0,
         0,
+        nothing,
     )
 end
 
 
 function series_perturbations_json(controller)
-    # Widths are fractions of the panel length; the position is shown in the
-    # axis units of its panel.
+    # Position and widths are fractions of the panel length.
     series = controller.series
     entries = String[]
 
     for perturbation in series.perturbations
-        displayed_length = perturbation.segment <= length(controller.app.simulations) ?
-            series_display_length(controller.app, perturbation.segment) : 0.0
         push!(
             entries,
             "{" *
             "\"id\":" * string(perturbation.id) * "," *
             "\"panel\":" * string(perturbation.segment) * "," *
             "\"variable\":" * string(perturbation.variable) * "," *
-            "\"position\":" * json_number(perturbation.position * displayed_length) * "," *
+            "\"position\":" * json_number(perturbation.position) * "," *
             "\"widthMin\":" * json_number(perturbation.width_min) * "," *
             "\"widthMax\":" * json_number(perturbation.width_max) * "," *
             "\"heightMin\":" * json_number(perturbation.height_min) * "," *
@@ -341,15 +348,6 @@ function series_preset_by_key(model_key::AbstractString, preset_key::AbstractStr
         SERIES_PRESETS,
     )
     return index === nothing ? nothing : SERIES_PRESETS[index]
-end
-
-
-function reset_series_templates_to_live_state!(controller::QMLController)
-    controller.series.templates = [
-        RD.make_series_template(sim)
-        for sim in controller.app.simulations
-    ]
-    return controller.series.templates
 end
 
 
@@ -373,6 +371,17 @@ function apply_series_initial_values!(
 end
 
 
+function applied_panel_initial_values(series::SeriesController, segment::Int)
+    # What a realization of this panel really starts from. An empty result
+    # means the live state of every variable; a variable the preset does not
+    # list keeps its live state in any case.
+    segment <= length(series.panel_apply_initial_values) &&
+        series.panel_apply_initial_values[segment] ||
+        return Dict{String, Float64}()
+    return series.panel_initial_values[segment]
+end
+
+
 function resize_panel_vector!(values::Vector, count::Int, default::Function)
     while length(values) < count
         push!(values, default())
@@ -390,6 +399,7 @@ function ensure_panel_preset_state!(
     series = controller.series
     resize_panel_vector!(series.panel_presets, count, () -> "none")
     resize_panel_vector!(series.panel_initial_values, count, () -> Dict{String, Float64}())
+    resize_panel_vector!(series.panel_apply_initial_values, count, () -> false)
     resize_panel_vector!(series.custom_sets, count, () -> nothing)
     return nothing
 end
@@ -399,39 +409,9 @@ function clear_panel_preset_state!(controller::QMLController)
     series = controller.series
     empty!(series.panel_presets)
     empty!(series.panel_initial_values)
+    empty!(series.panel_apply_initial_values)
     empty!(series.custom_sets)
     ensure_panel_preset_state!(controller)
-    return nothing
-end
-
-
-function apply_panel_initial_values!(controller::QMLController)
-    # Series templates are captured from the live solvers, which do not carry
-    # the initial values chosen per panel; apply them after every capture.
-    series = controller.series
-    ensure_panel_preset_state!(controller)
-
-    for (segment, template) in enumerate(series.templates)
-        segment <= length(series.panel_initial_values) || break
-        apply_series_initial_values!([template], series.panel_initial_values[segment])
-    end
-
-    return nothing
-end
-
-
-function rebuild_series_template!(controller::QMLController, segment::Int)
-    series = controller.series
-
-    if length(series.templates) != length(controller.app.simulations)
-        reset_series_templates_to_live_state!(controller)
-        apply_panel_initial_values!(controller)
-        return nothing
-    end
-
-    template = RD.make_series_template(controller.app.simulations[segment])
-    apply_series_initial_values!([template], series.panel_initial_values[segment])
-    series.templates[segment] = template
     return nothing
 end
 
@@ -445,6 +425,7 @@ function mark_panel_custom!(controller::QMLController, segment::Int)
     series.custom_sets[segment] = CustomPanelSet(
         deepcopy(filter(perturbation -> perturbation.segment == segment, series.perturbations)),
         copy(series.panel_initial_values[segment]),
+        series.panel_apply_initial_values[segment],
     )
     return nothing
 end
@@ -502,8 +483,8 @@ function series_results_json(controller)
                 1.0
 
             groups = series.configuration_groups[segment]
-            periodic = segment <= length(series.templates) &&
-                       series.templates[segment].boundary_condition == :periodic
+            periodic = segment <= length(app.simulations) &&
+                       app.simulations[segment].boundary_condition == :periodic
             order = RD.head_configuration_order(groups)
             config_labels = RD.head_configuration_labels(groups, periodic)[order]
             config_counts = [groups[index].count for index in order]
@@ -550,32 +531,30 @@ function series_display_length(app::RD.AppState, segment::Int)
 end
 
 
-# Series perturbations store their position and widths as fractions of the
-# panel length (0 to 1). They are converted to axis units for display and
-# previews, and to solver units when a series starts, so changing the domain
+# Series perturbations store and show their position and widths as fractions
+# of the panel length (0 to 1). They are converted to axis units for the
+# previews and to solver units when a series starts, so changing the domain
 # length never changes them.
+const SERIES_POSITION_DIGITS = 3
 const SERIES_WIDTH_DIGITS = 2
-const SERIES_WIDTH_STEP = 10.0^-SERIES_WIDTH_DIGITS
+const SERIES_WIDTH_STEP = 0.01
 const SERIES_HEIGHT_DIGITS = 1
+# A width converted between panels stays positive however small it gets.
+const SERIES_SMALLEST_WIDTH = 1e-12
 
 
 function clamp_series_perturbation!(app::RD.AppState, perturbation::RD.SeriesPerturbation)
     1 <= perturbation.segment <= length(app.simulations) || return false
+    # Limits only. Panel operations convert these fractions exactly, so that a
+    # perturbation keeps its physical size; values are rounded where they are
+    # typed, in update_series_perturbation!.
     perturbation.position = clamp(perturbation.position, 0.0, 1.0)
-    # Widths keep the precision shown in the series window, so that focusing
-    # and leaving a field never changes a perturbation silently.
-    perturbation.width_max = clamp(
-        round(perturbation.width_max; digits = SERIES_WIDTH_DIGITS),
-        SERIES_WIDTH_STEP,
-        1.0,
-    )
+    perturbation.width_max = clamp(perturbation.width_max, SERIES_SMALLEST_WIDTH, 1.0)
     perturbation.width_min = clamp(
-        round(perturbation.width_min; digits = SERIES_WIDTH_DIGITS),
-        SERIES_WIDTH_STEP,
+        perturbation.width_min,
+        SERIES_SMALLEST_WIDTH,
         perturbation.width_max,
     )
-    perturbation.height_min = round(perturbation.height_min; digits = SERIES_HEIGHT_DIGITS)
-    perturbation.height_max = round(perturbation.height_max; digits = SERIES_HEIGHT_DIGITS)
     perturbation.variable = clamp(
         perturbation.variable,
         1,
@@ -1042,11 +1021,10 @@ end
 function refresh_qml_state!(controller::QMLController)
     controller.graphics_busy[] && return nothing
 
-    # In series mode the series owns the plots: redrawing the stopped main
-    # simulation's last snapshot would also reset the y axes and drop the
-    # room reserved for the series perturbation previews.
-    controller.bindings.series_mode[] ||
-        RD.refresh_ui_from_latest_snapshots!(controller.app)
+    # A running series owns the plots and keeps graphics_busy set, so this
+    # always shows the live state, also in series mode.
+    RD.refresh_ui_from_latest_snapshots!(controller.app)
+    refresh_series_overlays!(controller)
     random_mode, absolute_mode = current_perturbation_modes(controller.app)
     perturbation_values = RD.perturbation_control_values(controller.app)
     set_if_changed!(controller.bindings.random_mode, random_mode)
@@ -1062,10 +1040,6 @@ function refresh_qml_state!(controller::QMLController)
     set_if_changed!(
         controller.bindings.domain_length,
         controller.app.plot_panel.domain_length_scale,
-    )
-    set_if_changed!(
-        controller.bindings.checkpoint_available,
-        controller.app.saved_state[] !== nothing,
     )
     update_partition_bindings!(controller)
 
@@ -1222,17 +1196,9 @@ function refresh_series_bindings!(controller::QMLController)
     set_if_changed!(controller.bindings.series_seed, string(settings.seed))
     set_if_changed!(controller.bindings.series_head_variable, settings.head_variable)
     set_if_changed!(controller.bindings.series_live_preview, settings.live_preview)
-    set_if_changed!(controller.bindings.series_single_run, series.single_run)
     set_if_changed!(controller.bindings.series_selected_segment, series.selected_segment)
     set_if_changed!(controller.bindings.series_selected_variable, series.selected_variable)
-    set_if_changed!(
-        controller.bindings.series_position,
-        series.selected_position * series_display_length(controller.app, series.selected_segment),
-    )
-    set_if_changed!(
-        controller.bindings.series_selected_panel_length,
-        series_display_length(controller.app, series.selected_segment),
-    )
+    set_if_changed!(controller.bindings.series_position, series.selected_position)
     set_if_changed!(
         controller.bindings.series_perturbations_json,
         series_perturbations_json(controller),
@@ -1248,6 +1214,12 @@ function refresh_series_bindings!(controller::QMLController)
             model_key;
             include_custom = series.custom_sets[segment] !== nothing,
         ),
+    )
+    initial_available = !isempty(series.panel_initial_values[segment])
+    set_if_changed!(controller.bindings.series_preset_initial_available, initial_available)
+    set_if_changed!(
+        controller.bindings.series_use_preset_initial,
+        initial_available && series.panel_apply_initial_values[segment],
     )
     selected_preset = series.panel_presets[segment]
     if selected_preset ∉ ("none", "custom") &&
@@ -1271,6 +1243,22 @@ function refresh_series_bindings!(controller::QMLController)
 end
 
 
+function latest_runtime_snapshots(app::RD.AppState)
+    snapshots = RD.SimulationSnapshot[]
+
+    for runtime in app.segment_runtimes
+        lock(runtime.snapshot_lock)
+        try
+            runtime.latest_snapshot[] === nothing || push!(snapshots, runtime.latest_snapshot[])
+        finally
+            unlock(runtime.snapshot_lock)
+        end
+    end
+
+    return snapshots
+end
+
+
 function refresh_series_residual_status!(controller::QMLController, running::Bool)
     series = controller.series
     panel = controller.app.plot_panel
@@ -1279,23 +1267,32 @@ function refresh_series_residual_status!(controller::QMLController, running::Boo
 
     lock(series.lock)
     try
-        length(series.base_snapshots) == length(panel.segment_status_observables) ||
-            return nothing
         residuals = copy(series.latest_residuals)
-        for segment in eachindex(series.base_snapshots)
-            candidate = running ?
-                series.latest_snapshots[segment] : series.base_snapshots[segment]
-            push!(
-                status_snapshots,
-                candidate === nothing ? series.base_snapshots[segment] : candidate,
-            )
+        if running
+            length(series.base_snapshots) == length(panel.segment_status_observables) ||
+                return nothing
+            for segment in eachindex(series.base_snapshots)
+                candidate = series.latest_snapshots[segment]
+                push!(
+                    status_snapshots,
+                    candidate === nothing ? series.base_snapshots[segment] : candidate,
+                )
+            end
         end
     finally
         unlock(series.lock)
     end
 
-    length(residuals) == length(status_snapshots) || return nothing
-    label = running ? "R" : any(isfinite, residuals) ? "R(last)" : "R"
+    # Outside a run the status of the live state carries the residuals of the
+    # last run; once its results are cleared there is nothing to add.
+    if !running
+        any(isfinite, residuals) || return nothing
+        status_snapshots = latest_runtime_snapshots(controller.app)
+    end
+
+    length(residuals) == length(status_snapshots) == length(panel.segment_status_observables) ||
+        return nothing
+    label = running ? "R" : "R(last)"
     for segment in eachindex(status_snapshots)
         value = residuals[segment]
         formatted = isfinite(value) ? @sprintf("%.2e", value) : "--"
@@ -1321,18 +1318,7 @@ function refresh_series_runtime!(controller::QMLController)
 
     lock(series.lock)
     try
-        if !running && task !== nothing && istaskdone(task) &&
-           !series.finish_restores_base
-            series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[
-                series.base_snapshots...
-            ]
-            series.snapshot_revision += 1
-            series.latest_profiles = nothing
-            series.profile_revision += 1
-            series.finish_restores_base = true
-        end
-
-        if (series.settings.live_preview || !running) &&
+        if running && series.settings.live_preview &&
            series.snapshot_revision != series.published_snapshot_revision &&
            length(series.latest_snapshots) == length(controller.app.simulations) &&
            all(snapshot -> snapshot !== nothing, series.latest_snapshots)
@@ -1343,14 +1329,14 @@ function refresh_series_runtime!(controller::QMLController)
             publish_snapshots = true
         end
 
-        if (series.settings.live_preview || !running) &&
+        if running && series.settings.live_preview &&
            series.profile_revision != series.published_profile_revision
             profiles = series.latest_profiles
             series.published_profile_revision = series.profile_revision
             publish_profiles = true
         end
 
-        if series.residual_revision != series.published_residual_revision
+        if running && series.residual_revision != series.published_residual_revision
             series.published_residual_revision = series.residual_revision
             publish_residuals = true
         end
@@ -1387,18 +1373,15 @@ function refresh_series_runtime!(controller::QMLController)
         end
     end
 
-    refresh_series_bindings!(controller)
-
-    if !running && task !== nothing && istaskdone(task) && controller.graphics_busy[]
-        controller.graphics_busy[] = false
-
-        if series.editor_open
-            show_series_previews!(controller)
-            update_series_position_marker!(controller)
-        end
-
-        refresh_qml_state!(controller)
+    if !running && task !== nothing && istaskdone(task)
+        finish_series_run!(controller)
+    elseif !running && task === nothing &&
+           !series_results_match_panels(series, controller.app)
+        # A safety net: no result may outlive the panels it belongs to.
+        clear_series_results!(controller)
     end
+
+    refresh_series_bindings!(controller)
 
     return nothing
 end
@@ -1422,7 +1405,7 @@ function apply_pending_series_preview_update!(controller::QMLController)
     controller.series.pending_preview_update = :none
 
     try
-        request === :show ?
+        request === :show && !controller.app.worker_running[] ?
             show_series_previews_now!(controller) :
             clear_series_previews_now!(controller)
     catch error
@@ -1445,6 +1428,7 @@ function clear_series_previews_now!(controller::QMLController)
     end
 
     empty!(series.preview_items)
+    empty!(series.preview_geometry)
     RD.rescale_solution_axes!(controller.app.plot_panel, controller.app.simulations)
     return nothing
 end
@@ -1454,6 +1438,13 @@ function series_preview_anchor(
     controller::QMLController,
     perturbation::RD.SeriesPerturbation,
 )
+    # With "Preset" a realization starts from the preset value, not from the
+    # plotted live state.
+    model = controller.app.simulations[perturbation.segment].model
+    applied = applied_panel_initial_values(controller.series, perturbation.segment)
+    initial_value = get(applied, model.varnames[perturbation.variable], nothing)
+    initial_value === nothing || return initial_value
+
     panel = controller.app.plot_panel
     x = panel.segment_x_observables[perturbation.segment][]
     y = panel.segment_observables[perturbation.segment][perturbation.variable][]
@@ -1513,6 +1504,63 @@ function show_series_previews_now!(controller::QMLController)
     end
 
     rescale_series_preview_axes!(controller)
+    series.preview_geometry = series_preview_geometry(controller)
+
+    return nothing
+end
+
+
+function series_preview_geometry(controller::QMLController)
+    # Everything the boxes are drawn from: comparing it notices a click on a
+    # plot, a new initial condition, a rescaled domain or rebuilt panels, wherever
+    # they came from.
+    app = controller.app
+    geometry = Float64[app.generation[]]
+
+    for perturbation in controller.series.perturbations
+        perturbation.segment <= length(app.simulations) || continue
+        append!(
+            geometry,
+            (
+                perturbation.segment,
+                perturbation.variable,
+                perturbation.position,
+                perturbation.width_min,
+                perturbation.width_max,
+                perturbation.height_min,
+                perturbation.height_max,
+                series_display_length(app, perturbation.segment),
+                series_preview_anchor(controller, perturbation),
+            ),
+        )
+    end
+
+    return geometry
+end
+
+
+function refresh_series_overlays!(controller::QMLController)
+    # What series mode adds to the ordinary refresh, which fits the y axes to
+    # the solution alone. The boxes stay hidden while the main simulation
+    # plays: its profile would leave them behind at once.
+    series = controller.series
+    controller.bindings.series_mode[] && !series.running[] || return nothing
+
+    try
+        if series.editor_open
+            if controller.app.worker_running[]
+                isempty(series.preview_items) || clear_series_previews!(controller)
+            else
+                isequal(series_preview_geometry(controller), series.preview_geometry) ||
+                    show_series_previews!(controller)
+                isempty(series.preview_items) || rescale_series_preview_axes!(controller)
+            end
+        end
+
+        refresh_series_residual_status!(controller, false)
+    catch error
+        report_error!(controller, "Series preview refresh failed", error)
+    end
 
     return nothing
 end
@@ -1630,30 +1678,20 @@ function set_series_mode!(controller::QMLController, enabled)
         enabled == controller.bindings.series_mode[] && return nothing
 
         if enabled
-            templates, base_snapshots, generation = capture_series_base!(controller)
+            # Nothing is captured here: Start takes everything from the live
+            # state. Until then the main window keeps working as usual.
+            RD.stop_worker!(app; wait = true)
             lock(series.lock)
             try
-                series.templates = templates
-                apply_panel_initial_values!(controller)
-                series.base_snapshots = base_snapshots
-                series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[
-                    base_snapshots...
-                ]
-                series.snapshot_revision += 1
-                series.published_snapshot_revision = -1
-                series.generation = generation
                 series.task_ref[] = nothing
                 series.stop_requested[] = false
-                series.finish_restores_base = true
-                series.latest_residuals = fill(NaN, length(templates))
+                reset_series_results_locked!(series, panel_point_counts(app))
+                series.latest_residuals = fill(NaN, length(app.simulations))
                 series.residual_revision += 1
-                series.published_residual_revision = -1
-                reset_series_results_locked!(series, templates)
             finally
                 unlock(series.lock)
             end
-            app.mouse_perturbations_enabled[] = false
-            RD.clear_perturbation_previews!(app.plot_panel)
+            show_live_series_display!(controller)
             controller.bindings.series_mode[] = true
             open_series_editor!(controller)
         else
@@ -1661,15 +1699,10 @@ function set_series_mode!(controller::QMLController, enabled)
             series.running[] && return nothing
             task = series.task_ref[]
             task !== nothing && !istaskdone(task) && wait(task)
-            restore_series_base_display!(controller)
+            task === nothing || finish_series_run!(controller)
             controller.bindings.series_mode[] = false
             close_series_editor!(controller)
-            app.mouse_perturbations_enabled[] = true
-
-            # The main solver never adopts a series realization.  Publish the
-            # entry snapshots so ordinary UI refreshes keep showing the base.
-            RD.store_runtime_snapshots!(app, series.base_snapshots)
-            controller.graphics_busy[] = false
+            show_live_series_display!(controller)
             refresh_series_bindings!(controller)
             refresh_qml_state!(controller)
         end
@@ -1716,14 +1749,9 @@ function set_series_position!(controller::QMLController, value)
     return guarded_action(controller, "Series-position change failed") do
         series = controller.series
         series.running[] && return nothing
-        displayed_length = series_display_length(
-            controller.app,
-            series.selected_segment,
-        )
-        displayed_length > 0.0 || error("The selected panel has zero length.")
-        # The slider works in axis units; the position is kept as a fraction.
+        # A fraction of the panel length, like the position of a perturbation.
         series.selected_position = clamp(
-            parse_finite_qml_number(value, "Series position") / displayed_length,
+            parse_finite_qml_number(value, "Series position"),
             0.0,
             1.0,
         )
@@ -1785,12 +1813,14 @@ function select_series_preset!(controller::QMLController, preset_key_value)
         if preset_key == "none"
             perturbations = RD.SeriesPerturbation[]
             initial_values = Dict{String, Float64}()
+            apply_initial_values = false
             status = "Cleared the perturbations of panel $segment"
         elseif preset_key == "custom"
             custom = series.custom_sets[segment]
             custom === nothing && error("Panel $segment has no custom perturbations.")
             perturbations = deepcopy(custom.perturbations)
             initial_values = copy(custom.initial_values)
+            apply_initial_values = custom.apply_initial_values
             status = "Restored the custom perturbations of panel $segment"
         else
             model_key = controller.bindings.active_model_key[]
@@ -1798,6 +1828,7 @@ function select_series_preset!(controller::QMLController, preset_key_value)
             preset === nothing && error("This Series preset is not available for the selected model.")
             perturbations = series_preset_perturbations(controller, preset, segment)
             initial_values = copy(preset.initial_values)
+            apply_initial_values = !isempty(initial_values)
             status = "Loaded preset $(preset.name) into panel $segment"
         end
 
@@ -1806,7 +1837,6 @@ function select_series_preset!(controller::QMLController, preset_key_value)
                 error("The preset requires variable '$variable_name', which is unavailable in this model.")
         end
 
-        restore_series_base_display!(controller)
         filter!(perturbation -> perturbation.segment != segment, series.perturbations)
 
         for perturbation in perturbations
@@ -1820,9 +1850,9 @@ function select_series_preset!(controller::QMLController, preset_key_value)
         series.selected_perturbation_id = isempty(perturbations) ? 0 : last(perturbations).id
         series.panel_presets[segment] = preset_key
         series.panel_initial_values[segment] = initial_values
-        rebuild_series_template!(controller, segment)
-        series.status = isempty(series.perturbations) ? "Add at least one perturbation" : status
+        series.panel_apply_initial_values[segment] = apply_initial_values
         clear_series_results!(controller)
+        series.status = isempty(series.perturbations) ? "Add at least one perturbation" : status
         update_series_editor_selection!(controller)
         series.editor_open && show_series_previews!(controller)
         clear_series_position_marker!(controller)
@@ -1831,17 +1861,35 @@ function select_series_preset!(controller::QMLController, preset_key_value)
 end
 
 
+function set_series_use_preset_initial!(controller::QMLController, use_preset)
+    # The switch of the selected panel. The values stay remembered in both
+    # positions; without any, only "Current state" exists.
+    return guarded_action(controller, "Initial-condition change failed") do
+        series = controller.series
+        series.running[] && return nothing
+        ensure_panel_preset_state!(controller)
+        segment = clamp(series.selected_segment, 1, length(controller.app.simulations))
+        apply_values = Bool(use_preset) && !isempty(series.panel_initial_values[segment])
+        series.panel_apply_initial_values[segment] == apply_values && return nothing
+        series.panel_apply_initial_values[segment] = apply_values
+        series.panel_presets[segment] == "custom" && mark_panel_custom!(controller, segment)
+        clear_series_results!(controller)
+        series.editor_open && show_series_previews!(controller)
+        refresh_series_bindings!(controller)
+    end
+end
+
+
 function add_series_perturbation!(controller::QMLController)
     series = controller.series
     series.running[] && return nothing
-    restore_series_base_display!(controller)
     segment = series.selected_segment
     variable = series.selected_variable
     perturbation = RD.SeriesPerturbation(
         id = series.next_perturbation_id,
         segment = segment,
         variable = variable,
-        position = series.selected_position,
+        position = round(series.selected_position; digits = SERIES_POSITION_DIGITS),
         width_min = 0.05,
         width_max = 0.10,
         height_min = 1.0,
@@ -1863,7 +1911,6 @@ end
 function delete_series_perturbation!(controller::QMLController, id_value)
     series = controller.series
     series.running[] && return nothing
-    restore_series_base_display!(controller)
     id = Int(id_value)
     deleted = series_perturbation_by_id(series, id)
     deleted === nothing && return nothing
@@ -1881,45 +1928,63 @@ function parse_series_width(value, label::AbstractString)
     width = parse_finite_qml_number(value, label)
     0.0 < width <= 1.0 ||
         error("$label is a fraction of the panel length and must be greater than 0 and at most 1.")
-    return width
+    return max(round(width; digits = SERIES_WIDTH_DIGITS), SERIES_WIDTH_STEP)
+end
+
+
+function parse_series_position(value)
+    position = parse_finite_qml_number(value, "Position")
+    0.0 <= position <= 1.0 ||
+        error("Position is a fraction of the panel length and must be between 0 and 1.")
+    return round(position; digits = SERIES_POSITION_DIGITS)
 end
 
 
 function update_series_perturbation!(controller::QMLController, id_value, field_value, value)
     series = controller.series
     series.running[] && return nothing
-    restore_series_base_display!(controller)
     perturbation = series_perturbation_by_id(series, Int(id_value))
     perturbation === nothing && return nothing
     field = String(field_value)
     previous_segment = perturbation.segment
+    # Worked out on a copy: a refused edit leaves the perturbation as it was.
+    edited = deepcopy(perturbation)
 
     if field == "panel"
         # Fractions of the panel length need no rescaling for another panel.
-        perturbation.segment = clamp(Int(value), 1, length(controller.app.simulations))
+        edited.segment = clamp(Int(value), 1, length(controller.app.simulations))
     elseif field == "variable"
-        perturbation.variable = Int(value)
+        edited.variable = Int(value)
     elseif field == "position"
-        displayed_length = series_display_length(controller.app, perturbation.segment)
-        displayed_length > 0.0 || error("The panel has zero length.")
-        perturbation.position = parse_finite_qml_number(value, "Position") / displayed_length
+        edited.position = parse_series_position(value)
     elseif field == "widthMin"
-        perturbation.width_min = parse_series_width(value, "Width minimum")
+        edited.width_min = parse_series_width(value, "Width minimum")
     elseif field == "widthMax"
-        perturbation.width_max = parse_series_width(value, "Width maximum")
+        edited.width_max = parse_series_width(value, "Width maximum")
     elseif field == "heightMin"
-        perturbation.height_min = parse_finite_qml_number(value, "Height minimum")
+        edited.height_min = round(
+            parse_finite_qml_number(value, "Height minimum");
+            digits = SERIES_HEIGHT_DIGITS,
+        )
     elseif field == "heightMax"
-        perturbation.height_max = parse_finite_qml_number(value, "Height maximum")
+        edited.height_max = round(
+            parse_finite_qml_number(value, "Height maximum");
+            digits = SERIES_HEIGHT_DIGITS,
+        )
     else
         error("Unknown series-perturbation field: $field")
     end
 
-    clamp_series_perturbation!(controller.app, perturbation)
-    perturbation.width_min <= perturbation.width_max ||
+    clamp_series_perturbation!(controller.app, edited)
+    edited.width_min <= edited.width_max ||
         error("Width minimum cannot exceed width maximum.")
-    perturbation.height_min <= perturbation.height_max ||
+    edited.height_min <= edited.height_max ||
         error("Height minimum cannot exceed height maximum.")
+
+    for name in fieldnames(RD.SeriesPerturbation)
+        setfield!(perturbation, name, getfield(edited, name))
+    end
+
     series.selected_perturbation_id = perturbation.id
     mark_panel_custom!(controller, perturbation.segment)
     previous_segment == perturbation.segment || mark_panel_custom!(controller, previous_segment)
@@ -2112,9 +2177,7 @@ function record_series_outcomes!(
         end
 
         series.completed_runs += 1
-        series.status = series.single_run ?
-            "Run one: realization $(series.completed_runs) finished" :
-            "Run $(series.completed_runs)/$(series.settings.run_count) complete"
+        series.status = "Run $(series.completed_runs)/$(series.settings.run_count) complete"
         series.results_revision += 1
     finally
         unlock(series.lock)
@@ -2126,30 +2189,26 @@ end
 
 function reset_series_results_locked!(
     series::SeriesController,
-    templates::Vector{RD.SeriesSegmentTemplate},
+    point_counts::Vector{Int},
 )
-    # The caller holds series.lock.
+    # The caller holds series.lock. One empty entry per panel.
     series.completed_runs = 0
-    series.location_counts = [zeros(Int, length(template.x)) for template in templates]
-    series.head_count_counts = [Dict{Int, Int}() for _ in templates]
-    series.not_converged_counts = zeros(Int, length(templates))
-    series.patterns = [Vector{Float64}[] for _ in templates]
-    series.pattern_converged = [Bool[] for _ in templates]
-    series.configuration_groups = [RD.HeadConfigurationGroup[] for _ in templates]
+    series.location_counts = [zeros(Int, count) for count in point_counts]
+    series.head_count_counts = [Dict{Int, Int}() for _ in point_counts]
+    series.not_converged_counts = zeros(Int, length(point_counts))
+    series.patterns = [Vector{Float64}[] for _ in point_counts]
+    series.pattern_converged = [Bool[] for _ in point_counts]
+    series.configuration_groups = [RD.HeadConfigurationGroup[] for _ in point_counts]
     series.results_revision += 1
     return nothing
 end
 
 
-function series_results_match_templates(
-    series::SeriesController,
-    templates::Vector{RD.SeriesSegmentTemplate},
-)
-    length(series.location_counts) == length(templates) || return false
-    return all(
-        length(series.location_counts[segment]) == length(templates[segment].x)
-        for segment in eachindex(templates)
-    )
+panel_point_counts(app::RD.AppState) = Int[sim.N for sim in app.simulations]
+
+
+function series_results_match_panels(series::SeriesController, app::RD.AppState)
+    return length.(series.location_counts) == panel_point_counts(app)
 end
 
 
@@ -2159,10 +2218,14 @@ function clear_series_results!(controller::QMLController)
 
     lock(series.lock)
     try
+        # The status of the last run would no longer describe the window.
+        series.completed_runs > 0 && (series.status = isempty(series.perturbations) ?
+            "Add at least one perturbation" : "Ready to run")
         # Keep one (empty) result entry per panel, so the series window keeps
         # showing empty charts instead of hiding them.
-        reset_series_results_locked!(series, series.templates)
-        fill!(series.latest_residuals, NaN)
+        point_counts = panel_point_counts(controller.app)
+        reset_series_results_locked!(series, point_counts)
+        series.latest_residuals = fill(NaN, length(point_counts))
         series.residual_revision += 1
     finally
         unlock(series.lock)
@@ -2173,20 +2236,42 @@ function clear_series_results!(controller::QMLController)
 end
 
 
-function restore_series_base_display!(controller::QMLController)
-    # Every series action returns the main plots to the state captured when
-    # series mode was opened, independently of the last realization.
+function capture_live_snapshots(app::RD.AppState)
+    # runtime.lock keeps a running segment worker out, so this also works while
+    # the main simulation is playing.
+    snapshots = RD.SimulationSnapshot[]
+
+    lock(app.simlock)
+    try
+        for segment in eachindex(app.simulations)
+            runtime = app.segment_runtimes[segment]
+            lock(runtime.lock)
+            try
+                push!(snapshots, RD.make_snapshot(app.simulations[segment], app.generation[]))
+            finally
+                unlock(runtime.lock)
+            end
+        end
+    finally
+        unlock(app.simlock)
+    end
+
+    return snapshots
+end
+
+
+function show_live_series_display!(controller::QMLController)
+    # Series realizations are never adopted by the main solvers: this returns
+    # the main plots and the ordinary refresh to the live state.
     series = controller.series
-    length(series.base_snapshots) == length(controller.app.simulations) &&
-        series.generation == controller.app.generation[] ||
-        error("Series entry state is unavailable; reopen series mode.")
+    app = controller.app
+    snapshots = capture_live_snapshots(app)
 
     lock(series.lock)
     try
-        series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[series.base_snapshots...]
+        series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[snapshots...]
         series.snapshot_revision += 1
         series.published_snapshot_revision = series.snapshot_revision
-        series.published_residual_revision = -1
         series.latest_profiles = nothing
         series.profile_revision += 1
         series.published_profile_revision = series.profile_revision
@@ -2194,88 +2279,96 @@ function restore_series_base_display!(controller::QMLController)
         unlock(series.lock)
     end
 
-    snapshot = RD.partition_snapshot_from_segments(series.base_snapshots, series.generation)
-    RD.refresh_app_from_snapshot!(controller.app, snapshot)
-    RD.refresh_spatial_profile_panel!(controller.app)
+    RD.store_runtime_snapshots!(app, snapshots)
+    RD.refresh_app_from_snapshot!(
+        app,
+        RD.partition_snapshot_from_segments(snapshots, app.generation[]),
+    )
+    RD.refresh_spatial_profile_panel!(app)
     return nothing
 end
 
 
-function run_one_summary(run_index::Int, outcomes::Vector{RD.SeriesPanelOutcome})
-    parts = String[]
+function finish_series_run!(controller::QMLController)
+    # The first event-loop pass after a run ended: unlock the main window and
+    # show the live state again, which also keeps later graphics actions from
+    # being mistaken for the end of this run.
+    series = controller.series
+    series.task_ref[] = nothing
+    controller.app.mouse_perturbations_enabled[] = true
+    controller.graphics_busy[] = false
 
-    for (segment, outcome) in enumerate(outcomes)
-        state = outcome.converged ? "converged" : "NOT converged"
-        prefix = length(outcomes) > 1 ? "panel $segment: " : ""
-        push!(
-            parts,
-            prefix * state *
-            @sprintf(
-                " at t = %.4g, %d steps, %d heads, R = %.3g",
-                outcome.time,
-                outcome.steps,
-                length(outcome.heads),
-                outcome.residual,
-            ),
+    try
+        show_live_series_display!(controller)
+    catch error
+        report_error!(controller, "Series display refresh failed", error)
+    end
+
+    if series.editor_open
+        show_series_previews!(controller)
+        update_series_position_marker!(controller)
+    end
+
+    refresh_qml_state!(controller)
+    return nothing
+end
+
+
+function capture_series_templates!(controller::QMLController)
+    # Everything a series uses comes from here, at the click on Start: state,
+    # parameters, profiles, panels, boundary conditions and the domain.
+    templates, base_snapshots, generation = capture_series_base!(controller)
+    ensure_panel_preset_state!(controller)
+
+    for (segment, template) in enumerate(templates)
+        apply_series_initial_values!(
+            [template],
+            applied_panel_initial_values(controller.series, segment),
         )
     end
 
-    return "Run one (realization $run_index): " * join(parts, "; ")
+    return templates, base_snapshots, generation
 end
 
 
 function start_series!(controller::QMLController)
-    return launch_series!(controller; single_run = false)
-end
-
-
-function run_one_series!(controller::QMLController)
-    return launch_series!(controller; single_run = true)
-end
-
-
-function launch_series!(controller::QMLController; single_run::Bool)
     series = controller.series
+    app = controller.app
     series.running[] && return nothing
     previous_task = series.task_ref[]
     previous_task !== nothing && !istaskdone(previous_task) && wait(previous_task)
+    previous_task === nothing || finish_series_run!(controller)
+    # A queued plot rebuild would end by clearing graphics_busy during the run.
+    controller.graphics_busy[] && error("Wait until the plots have been updated.")
     isempty(series.perturbations) && error("Add at least one perturbation before starting a series.")
-    RD.validate_series_settings(series.settings, controller.app.sim.model.nvars)
+    RD.validate_series_settings(series.settings, app.sim.model.nvars)
 
     for perturbation in series.perturbations
-        clamp_series_perturbation!(controller.app, perturbation) ||
+        clamp_series_perturbation!(app, perturbation) ||
             error("A perturbation points to an unavailable panel.")
     end
 
-    restore_series_base_display!(controller)
-    templates = series.templates
-    base_snapshots = series.base_snapshots
-    generation = series.generation
-    length(templates) == length(controller.app.simulations) &&
-        length(base_snapshots) == length(templates) ||
-        error("Series entry state is unavailable; reopen series mode.")
+    templates, base_snapshots, generation = capture_series_templates!(controller)
     runtime_perturbations = series_runtime_perturbations(controller, templates)
+    run_setup = series_run_setup(controller, templates)
+    app.mouse_perturbations_enabled[] = false
+    RD.clear_perturbation_previews!(app.plot_panel)
     clear_series_previews!(controller)
     clear_series_position_marker!(controller)
-
-    # "Run one" adds one more realization to the current statistics; a full
-    # series starts them afresh.
-    reset_results = !single_run || !series_results_match_templates(series, templates)
-    first_run = reset_results ? 1 : series.completed_runs + 1
-    run_indices = single_run ? (first_run:first_run) : (1:series.settings.run_count)
+    # The capture moved to a new generation; the ordinary refresh follows it.
+    RD.store_runtime_snapshots!(app, base_snapshots)
+    run_indices = 1:series.settings.run_count
 
     lock(series.lock)
     try
+        series.base_snapshots = base_snapshots
+        series.run_setup = run_setup
         series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[base_snapshots...]
         series.snapshot_revision += 1
         series.published_snapshot_revision = -1
         series.generation = generation
-        reset_results && reset_series_results_locked!(series, templates)
-        series.single_run = single_run
-        series.status = single_run ?
-            "Run one: realization $first_run running..." :
-            "Running 0/$(series.settings.run_count)"
-        series.finish_restores_base = false
+        reset_series_results_locked!(series, Int[length(template.x) for template in templates])
+        series.status = "Running 0/$(series.settings.run_count)"
         series.stop_requested[] = false
         series.running[] = true
         series.latest_residuals = fill(NaN, length(templates))
@@ -2291,7 +2384,6 @@ function launch_series!(controller::QMLController; single_run::Bool)
 
     series.task_ref[] = Threads.@spawn begin
         stopped = false
-        last_outcomes = nothing
 
         try
             for run_index in run_indices
@@ -2340,7 +2432,6 @@ function launch_series!(controller::QMLController; single_run::Bool)
                 )
                 series.stop_requested[] && (stopped = true; break)
                 record_series_outcomes!(controller, outcomes, templates, settings.head_variable)
-                last_outcomes = outcomes
             end
         catch error
             lock(series.lock)
@@ -2354,16 +2445,11 @@ function launch_series!(controller::QMLController; single_run::Bool)
             lock(series.lock)
             try
                 if stopped
-                    series.status = single_run ?
-                        "Run one stopped" :
-                        "Stopped after $(series.completed_runs)/$(settings.run_count) runs"
-                elseif single_run && last_outcomes !== nothing
-                    series.status = run_one_summary(first(run_indices), last_outcomes)
-                elseif !single_run && series.completed_runs == settings.run_count
+                    series.status = "Stopped after $(series.completed_runs)/$(settings.run_count) runs"
+                elseif series.completed_runs == settings.run_count
                     series.status = "Completed $(settings.run_count) runs"
                 end
                 series.running[] = false
-                series.single_run = false
                 series.results_revision += 1
             finally
                 unlock(series.lock)
@@ -2401,6 +2487,29 @@ function clear_series_perturbations!(controller::QMLController)
 end
 
 
+function update_series_after_rebuild!(controller::QMLController)
+    # Reset and a boundary-condition change rebuild the panels of the same
+    # model. In series mode the setup of the panels that still exist stays;
+    # outside it they clear it as they always did.
+    controller.bindings.series_mode[] || return clear_series_perturbations!(controller)
+    return keep_series_setup_of_remaining_panels!(controller)
+end
+
+
+function keep_series_setup_of_remaining_panels!(controller::QMLController)
+    series = controller.series
+    clear_series_position_marker!(controller)
+    ensure_panel_preset_state!(controller)
+    clamp_all_series_perturbations!(controller)
+    series_perturbation_by_id(series, series.selected_perturbation_id) === nothing &&
+        (series.selected_perturbation_id = 0)
+    series.status = isempty(series.perturbations) ? "Add at least one perturbation" : "Ready to run"
+    series.editor_open && show_series_previews!(controller)
+    clear_series_results!(controller)
+    return nothing
+end
+
+
 function clamp_all_series_perturbations!(controller::QMLController)
     series = controller.series
     filter!(perturbation -> clamp_series_perturbation!(controller.app, perturbation), series.perturbations)
@@ -2424,6 +2533,7 @@ function remap_series_after_split!(
     had_setup = series.panel_presets[split_segment] != "none"
     insert!(series.panel_presets, split_segment + 1, "none")
     insert!(series.panel_initial_values, split_segment + 1, copy(series.panel_initial_values[split_segment]))
+    insert!(series.panel_apply_initial_values, split_segment + 1, series.panel_apply_initial_values[split_segment])
     insert!(series.custom_sets, split_segment + 1, nothing)
 
     left_length = series_display_length(controller.app, split_segment)
@@ -2454,6 +2564,7 @@ function remap_series_after_split!(
 
     clamp_all_series_perturbations!(controller)
     controller.series.editor_open && show_series_previews!(controller)
+    clear_series_results!(controller)
     refresh_series_bindings!(controller)
     return nothing
 end
@@ -2469,13 +2580,18 @@ function remap_series_after_merge!(
     ensure_panel_preset_state!(controller, length(controller.app.simulations) + 1)
     had_setup = series.panel_presets[left_segment] != "none" ||
                 series.panel_presets[right_segment] != "none"
-    same_initial_values =
-        series.panel_initial_values[left_segment] == series.panel_initial_values[right_segment]
-    same_initial_values || (series.panel_initial_values[left_segment] = Dict{String, Float64}())
+    same_initial_condition =
+        series.panel_initial_values[left_segment] == series.panel_initial_values[right_segment] &&
+        series.panel_apply_initial_values[left_segment] == series.panel_apply_initial_values[right_segment]
+    if !same_initial_condition
+        series.panel_initial_values[left_segment] = Dict{String, Float64}()
+        series.panel_apply_initial_values[left_segment] = false
+    end
     series.panel_presets[left_segment] = "none"
     series.custom_sets[left_segment] = nothing
     deleteat!(series.panel_presets, right_segment)
     deleteat!(series.panel_initial_values, right_segment)
+    deleteat!(series.panel_apply_initial_values, right_segment)
     deleteat!(series.custom_sets, right_segment)
 
     # Positions and widths are fractions of a panel: convert them to the
@@ -2503,6 +2619,7 @@ function remap_series_after_merge!(
 
     clamp_all_series_perturbations!(controller)
     controller.series.editor_open && show_series_previews!(controller)
+    clear_series_results!(controller)
     refresh_series_bindings!(controller)
     return nothing
 end
@@ -2513,7 +2630,12 @@ function remap_series_after_swap!(controller::QMLController, left_segment::Int)
     series = controller.series
     ensure_panel_preset_state!(controller)
 
-    for values in (series.panel_presets, series.panel_initial_values, series.custom_sets)
+    for values in (
+        series.panel_presets,
+        series.panel_initial_values,
+        series.panel_apply_initial_values,
+        series.custom_sets,
+    )
         values[left_segment], values[right_segment] = values[right_segment], values[left_segment]
     end
 
@@ -2527,6 +2649,7 @@ function remap_series_after_swap!(controller::QMLController, left_segment::Int)
 
     clamp_all_series_perturbations!(controller)
     controller.series.editor_open && show_series_previews!(controller)
+    clear_series_results!(controller)
     refresh_series_bindings!(controller)
     return nothing
 end
@@ -2537,6 +2660,7 @@ function remap_series_after_delete!(controller::QMLController, deleted_segment::
     ensure_panel_preset_state!(controller, length(controller.app.simulations) + 1)
     deleteat!(series.panel_presets, deleted_segment)
     deleteat!(series.panel_initial_values, deleted_segment)
+    deleteat!(series.panel_apply_initial_values, deleted_segment)
     deleteat!(series.custom_sets, deleted_segment)
     filter!(perturbation -> perturbation.segment != deleted_segment, controller.series.perturbations)
 
@@ -2546,6 +2670,7 @@ function remap_series_after_delete!(controller::QMLController, deleted_segment::
 
     clamp_all_series_perturbations!(controller)
     controller.series.editor_open && show_series_previews!(controller)
+    clear_series_results!(controller)
     refresh_series_bindings!(controller)
     return nothing
 end
@@ -2553,6 +2678,7 @@ end
 
 function toggle_running!(controller::QMLController)
     return guarded_action(controller, "Simulation control failed") do
+        controller.series.running[] && return nothing
         app = controller.app
 
         if app.worker_running[] || app.running[] || app.synchronization_running[]
@@ -2582,37 +2708,7 @@ function reset_simulation!(controller::QMLController)
         controller.selected_segment = 1
         update_model_bindings!(controller)
         update_partition_bindings!(controller; reset_index = true)
-        clear_series_perturbations!(controller)
-    end
-end
-
-
-function save_current_state!(controller::QMLController)
-    return guarded_action(controller, "State save failed") do
-        RD.save_simulation_state!(controller.app)
-        controller.bindings.checkpoint_available[] = true
-    end
-end
-
-
-function restore_saved_state!(controller::QMLController)
-    return guarded_action(controller, "State restore failed") do
-        RD.restore_saved_simulation_state_app!(
-            controller.app;
-            plot_grid = controller.plot_grid,
-            title_obs = controller.title_obs,
-            reltol = controller.reltol,
-            abstol = controller.abstol,
-        )
-        controller.diffusion_scale =
-            controller.app.plot_panel.domain_length_scale^2
-        controller.boundary_name_obs[] = RD.boundary_condition_label(
-            controller.app.initial_boundary_condition,
-        )
-        controller.selected_segment = 1
-        update_model_bindings!(controller)
-        update_partition_bindings!(controller; reset_index = true)
-        clear_series_perturbations!(controller)
+        update_series_after_rebuild!(controller)
     end
 end
 
@@ -2653,7 +2749,7 @@ end
 
 function hard_reset!(controller::QMLController)
     # Reload the active model as if it were chosen again: default parameters
-    # and profile set, one panel, no checkpoint and no series perturbations.
+    # and profile set, one panel and no series perturbations.
     return select_model!(controller, controller.bindings.active_model_key[])
 end
 
@@ -2683,7 +2779,7 @@ function select_boundary_condition!(controller::QMLController, label)
         controller.selected_segment = 1
         update_partition_bindings!(controller; reset_index = true)
         refresh_current_equation_image!(controller)
-        clear_series_perturbations!(controller)
+        update_series_after_rebuild!(controller)
     end
 end
 
@@ -2706,20 +2802,8 @@ function set_domain_exponent!(controller::QMLController, exponent)
             worker_sleep_time = controller.worker_sleep_time,
         )
         if controller.bindings.series_mode[]
-            templates, base_snapshots, generation = capture_series_base!(controller)
-            series = controller.series
-            lock(series.lock)
-            try
-                series.templates = templates
-                apply_panel_initial_values!(controller)
-                series.base_snapshots = base_snapshots
-                series.latest_snapshots = Union{Nothing, RD.SimulationSnapshot}[base_snapshots...]
-                series.generation = generation
-                reset_series_results_locked!(series, templates)
-            finally
-                unlock(series.lock)
-            end
-            series.editor_open && show_series_previews!(controller)
+            clear_series_results!(controller)
+            controller.series.editor_open && show_series_previews!(controller)
         end
         # Fractions are unchanged; the axis-unit values shown are not.
         refresh_series_bindings!(controller)
@@ -2981,6 +3065,7 @@ end
 
 function set_perturbation_width!(controller::QMLController, value)
     return guarded_action(controller, "Perturbation width change failed") do
+        controller.series.running[] && return nothing
         width = parse_finite_qml_number(value, "Width")
         0.0 < width <= 1.0 || error("Width must be greater than 0 and at most 1.")
         RD.set_perturbation_width_value!(controller.app, width) ||
@@ -2991,6 +3076,7 @@ end
 
 function set_perturbation_height!(controller::QMLController, value)
     return guarded_action(controller, "Perturbation height change failed") do
+        controller.series.running[] && return nothing
         height = parse_finite_qml_number(value, "Height")
         RD.set_perturbation_height_value!(controller.app, height) ||
             error("Perturbation controls are not available.")
@@ -3068,8 +3154,7 @@ function run_qml_event_loop!(
 end
 
 
-include("ParameterHistory.jl")
-include("GraphExport.jl")
+include("SaveLoad.jl")
 
 
 function register_qml_functions!(controller::QMLController)
@@ -3082,15 +3167,22 @@ function register_qml_functions!(controller::QMLController)
 
     QML.qmlfunction("refreshUI", () -> refresh_qml_state!(controller))
     QML.qmlfunction("toggleRunning", () -> toggle_running!(controller))
-    QML.qmlfunction("saveCurrentState", () -> save_current_state!(controller))
-    QML.qmlfunction("saveParameters", () -> save_parameter_history!(controller))
-    QML.qmlfunction("saveGraphs", () -> save_graphs!(controller))
+    QML.qmlfunction("saveSimulation", name -> save_simulation!(controller, String(name)))
+    QML.qmlfunction("saveSeries", name -> save_series!(controller, String(name)))
+    QML.qmlfunction("refreshSimulationSaves", () -> refresh_simulation_saves!(controller))
     QML.qmlfunction(
-        "restoreSavedState",
-        () -> enqueue_graphics_action!(
-            controller,
-            () -> restore_saved_state!(controller),
-        ),
+        "selectSimulationSave",
+        file -> select_simulation_save!(controller, String(file)),
+    )
+    QML.qmlfunction(
+        "loadSimulationSave",
+        file -> begin
+            file_name = String(file)
+            enqueue_graphics_action!(
+                controller,
+                () -> load_simulation_save!(controller, file_name),
+            )
+        end,
     )
     QML.qmlfunction(
         "resetSimulation",
@@ -3207,6 +3299,10 @@ function register_qml_functions!(controller::QMLController)
     )
     QML.qmlfunction("setSeriesMode", value -> set_series_mode!(controller, value))
     QML.qmlfunction(
+        "setSeriesUsePresetInitial",
+        value -> set_series_use_preset_initial!(controller, value),
+    )
+    QML.qmlfunction(
         "selectSeriesSegment",
         guarded(value -> select_series_segment!(controller, value), "Series panel selection failed"),
     )
@@ -3272,7 +3368,6 @@ function register_qml_functions!(controller::QMLController)
         guarded(value -> set_series_live_preview!(controller, value), "Series setting change failed"),
     )
     QML.qmlfunction("startSeries", guarded(() -> start_series!(controller), "Series start failed"))
-    QML.qmlfunction("runOneSeries", guarded(() -> run_one_series!(controller), "Run one failed"))
     QML.qmlfunction("stopSeries", guarded(() -> stop_series!(controller), "Series stop failed"))
     QML.qmlfunction("requestClose", () -> request_close!(controller))
 
@@ -3300,7 +3395,6 @@ function qml_property_map(
         "absoluteMode" => bindings.absolute_mode,
         "perturbationWidth" => bindings.perturbation_width,
         "perturbationHeight" => bindings.perturbation_height,
-        "checkpointAvailable" => bindings.checkpoint_available,
         "selectedSegment" => bindings.selected_segment,
         "segmentCount" => bindings.segment_count,
         "splitIndex" => bindings.split_index,
@@ -3313,6 +3407,8 @@ function qml_property_map(
         "profileFormulaImage" => bindings.profile_formula_image,
         "profileFormulaWidth" => bindings.profile_formula_width,
         "profileFormulaNote" => bindings.profile_formula_note,
+        "simulationSavesJson" => bindings.simulation_saves_json,
+        "simulationSaveDetailsJson" => bindings.simulation_save_details_json,
         "equationValuesVisible" => bindings.equation_values_visible,
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
@@ -3337,13 +3433,13 @@ function qml_property_map(
         "seriesSelectedSegment" => bindings.series_selected_segment,
         "seriesSelectedVariable" => bindings.series_selected_variable,
         "seriesPosition" => bindings.series_position,
-        "seriesSelectedPanelLength" => bindings.series_selected_panel_length,
         "seriesPerturbationsJson" => bindings.series_perturbations_json,
         "seriesPresetsJson" => bindings.series_presets_json,
         "seriesSelectedPreset" => bindings.series_selected_preset,
         "seriesResultsJson" => bindings.series_results_json,
         "seriesMode" => bindings.series_mode,
-        "seriesSingleRun" => bindings.series_single_run,
+        "seriesPresetInitialAvailable" => bindings.series_preset_initial_available,
+        "seriesUsePresetInitial" => bindings.series_use_preset_initial,
         "autoCloseMs" => Observable(auto_close_ms),
     )
 end
@@ -3438,7 +3534,6 @@ function create_qml_controller(;
         Threads.Atomic{Bool}(false),
         Ref{Union{Nothing, Task}}(nothing),
         Observable("Synchronized"),
-        Ref{Union{Nothing, RD.SavedSimulationState}}(nothing),
         Threads.Atomic{Bool}(true),
         Dict{Symbol, Float64}(),
         Observable(0),
@@ -3463,7 +3558,6 @@ function create_qml_controller(;
         Observable(get(equation_widths_by_model, first_key, 0.0)),
         Observable(0.05),
         Observable(0.0),
-        Observable(false),
         Observable(""),
         Observable(false),
         Observable(0),
@@ -3482,11 +3576,11 @@ function create_qml_controller(;
         Observable(1),
         Observable(1),
         Observable(0.5),
-        Observable(1.0),
         Observable("[]"),
         Observable(series_presets_json(SERIES_PRESETS, first_key)),
         Observable("none"),
         Observable("[]"),
+        Observable(false),
         Observable(false),
         Observable(false),
         Observable(first_model.description),
@@ -3498,6 +3592,8 @@ function create_qml_controller(;
         Observable(""),
         Observable(0.0),
         Observable(""),
+        Observable("{\"saves\":[],\"skipped\":[]}"),
+        Observable("{}"),
     )
     controller = QMLController(
         app,
@@ -3530,6 +3626,7 @@ function create_qml_controller(;
     # profile set outside QML; its parameters and formula follow here.
     on(app.spatial_profile_set_revision) do _
         guarded_action(controller, "Profile set change failed") do
+            controller.bindings.series_mode[] && clear_series_results!(controller)
             update_model_bindings!(controller)
             refresh_current_equation_image!(controller)
         end

@@ -1,4 +1,5 @@
-name = "u: strong ends, weak center"
+name = "u strong ends, weak center"
+description = "Adds noise to u at both ends (width 6–13% of the panel, amplitude 2–4) and the center (width 3–6%, amplitude 1.2–2.3)."
 
 [initial_values]
 u = 0.0

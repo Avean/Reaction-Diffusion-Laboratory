@@ -19,7 +19,7 @@
 # ============================================================
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_basic,
 
     display_name = "Basic",
     description = "Basic Gierer-Meinhardt model with constant production of inhibitor and three steady states (added K in denominator). Produces patterns only for large perturbations",

@@ -101,7 +101,30 @@ function load_model_registry(model_dir::AbstractString)
     isempty(registry) &&
         error("No model files found in directory: $model_dir")
 
+    check_unique_model_ids(registry)
+
     return registry
+end
+
+
+function check_unique_model_ids(registry::Dict{String, ModelSpec})
+    # Save files are kept per model id, so two models sharing one could load
+    # each other's states.
+    keys_by_id = Dict{Symbol, Vector{String}}()
+
+    for key in sort(collect(keys(registry)))
+        push!(get!(keys_by_id, registry[key].id, String[]), key)
+    end
+
+    duplicates = [
+        "$id ($(join(model_keys, ", ")))"
+        for (id, model_keys) in sort(collect(keys_by_id); by = first)
+        if length(model_keys) > 1
+    ]
+    isempty(duplicates) ||
+        error("Every model needs its own id; used more than once: " * join(duplicates, "; "))
+
+    return nothing
 end
 
 

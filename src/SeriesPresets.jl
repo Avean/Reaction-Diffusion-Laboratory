@@ -18,6 +18,8 @@ end
 struct SeriesPresetDefinition
     key::String
     name::String
+    # Short text shown under the preset selector; empty when the file has none.
+    description::String
     model_key::String
     initial_values::Dict{String, Float64}
     perturbations::Vector{SeriesPresetPerturbation}
@@ -51,6 +53,8 @@ end
 function load_series_preset(path::AbstractString, model_key::AbstractString)
     data = TOML.parsefile(path)
     name = _series_preset_string(data, "name", path)
+    description = haskey(data, "description") ?
+        _series_preset_string(data, "description", path) : ""
     raw_initial_values = get(data, "initial_values", Dict{String, Any}())
     raw_initial_values isa AbstractDict ||
         error("Preset $path initial_values must be a table.")
@@ -92,7 +96,7 @@ function load_series_preset(path::AbstractString, model_key::AbstractString)
     end
 
     key = basename(path)
-    return SeriesPresetDefinition(key, name, String(model_key), initial_values, perturbations)
+    return SeriesPresetDefinition(key, name, description, String(model_key), initial_values, perturbations)
 end
 
 
@@ -132,7 +136,8 @@ function series_presets_json(
         push!(
             entries,
             "{\"key\":" * json_string(preset.key) *
-            ",\"name\":" * json_string(preset.name) * "}",
+            ",\"name\":" * json_string(preset.name) *
+            ",\"description\":" * json_string(preset.description) * "}",
         )
     end
 

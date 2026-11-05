@@ -21,7 +21,7 @@
 τ0 = 1e0
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_source_head_linear,
 
     display_name = "Linear source head",
     description = "A source-head variant using a linear spatial construction. It provides a controlled gradient for comparing head formation across the domain.",

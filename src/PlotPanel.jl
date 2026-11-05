@@ -423,6 +423,7 @@ function build_spatial_profile_panel!(
     end
 
     function step_profile_set!(step::Int)
+        app.mouse_perturbations_enabled[] || return nothing
         nsets = length(app.sim.model.spatial_profile_sets)
         nsets == 0 && return nothing
         current = _active_spatial_profile_set_index(app.sim.params, app.sim.model.spatial_profile_sets)

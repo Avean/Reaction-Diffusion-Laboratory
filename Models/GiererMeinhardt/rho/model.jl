@@ -53,7 +53,7 @@ let
     exponential_note = "Series: the parts left and right of ρsplit draw their own ρa, ρb, ρc in every run, each within ±ρσa, ±ρσb, ±ρσc (relative). With all ρσ = 0 nothing is random."
 
     RDModel(
-        id = :gierer_meinhardt,
+        id = :gierer_meinhardt_rho,
 
         display_name = "Rho profile",
         description = "A Gierer-Meinhardt model modulated by the spatial profile rho(x). Used to test the role of spatial gradient",

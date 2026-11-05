@@ -19,7 +19,7 @@
 # ============================================================
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_zero_diffusion,
 
     display_name = "Base Kinetics",
     description = "Gierer-Meinhardt kinetics with the diffusion-free variant used as a reaction baseline. Spatial patterning then depends on the remaining configured transport terms.",

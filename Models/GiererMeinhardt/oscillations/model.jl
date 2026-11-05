@@ -23,7 +23,7 @@ function Teeth(t,τ, Treshold)
 end
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_oscillations,
 
     display_name = "Oscillations",
     description = "A time-dependent toy Gierer-Meinhardt variant configured for oscillatory behaviour. It shows how patterns can be shaped without starting from Turing instability",

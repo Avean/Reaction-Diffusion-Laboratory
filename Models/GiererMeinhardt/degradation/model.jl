@@ -19,7 +19,7 @@
 # ============================================================
 
 RDModel(
-    id = :gierer_meinhardt,
+    id = :gierer_meinhardt_degradation,
 
     display_name = "Degradation",
     description = "A Gierer-Meinhardt variant with degradation terms. It is useful for testing how removal rates reshape activator-inhibitor patterns.",

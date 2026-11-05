@@ -10,7 +10,7 @@
 # ============================================================
 
 RDModel(
-    id = :mechanochemical_global,
+    id = :mechanochemical_global_square,
 
     display_name = "Squared global integral",
     description = "A global-integral mechanochemical variant with squared coupling. It emphasizes nonlinear dependence on the domain-wide signal.",

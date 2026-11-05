@@ -31,9 +31,10 @@ ApplicationWindow {
     property int selectedFamilyIndex: 0
     property int activeFamilyIndex: findFamilyIndex(ui.activeModelKey)
     property string bottomPanel: ""
-    // In series mode every main-window control except the Series toggle is
-    // disabled; the series window owns all interaction.
-    property bool controlsEnabled: !ui.graphicsBusy && !ui.seriesMode
+    // Series mode leaves the main window usable: Start takes everything from
+    // the live state. Only a running series disables its controls, except the
+    // Series toggle.
+    property bool controlsEnabled: !ui.graphicsBusy && !ui.seriesRunning
 
     // The parameter fields are updated in place: rebuilding them after every
     // edit would destroy the field being edited, losing its focus and
@@ -119,9 +120,6 @@ ApplicationWindow {
             return
         }
 
-        modelDrawer.close()
-        controlDrawer.close()
-        closeBottomPanel()
         Julia.setSeriesMode(true)
     }
 
@@ -203,31 +201,6 @@ ApplicationWindow {
                 onClicked: modelDrawer.opened ? modelDrawer.close() : window.openModelDrawer()
             }
 
-            TileButton {
-                id: stateButton
-                text: ui.checkpointAvailable ? "State  •" : "State"
-                checked: stateMenu.opened
-                enabled: window.controlsEnabled
-                onClicked: stateMenu.open()
-
-                Menu {
-                    id: stateMenu
-                    y: stateButton.height
-
-                    MenuItem {
-                        text: "Save current state"
-                        enabled: window.controlsEnabled
-                        onTriggered: Julia.saveCurrentState()
-                    }
-
-                    MenuItem {
-                        text: "Restore saved state"
-                        enabled: ui.checkpointAvailable && window.controlsEnabled
-                        onTriggered: Julia.restoreSavedState()
-                    }
-                }
-            }
-
             // Both states have the width of the longer label.
             TextMetrics {
                 id: seriesLabelMetrics
@@ -249,22 +222,24 @@ ApplicationWindow {
                 ToolTip.text: "Stop the series to leave series mode"
             }
 
-            // Always available, also in series mode.
+            // Also in series mode, except while a series runs. A save holds
+            // the state of the simulation and nothing of the series.
             TileButton {
                 text: "Save"
-                onClicked: Julia.saveParameters()
+                enabled: window.controlsEnabled
+                onClicked: saveDialog.open()
 
                 ToolTip.visible: hovered
-                ToolTip.text: "Append the model, domain and series parameters to parameters_history.txt"
+                ToolTip.text: "Save the state, parameters and settings of the simulation to a file in saves/simulation"
             }
 
-            // Always available; in series mode it adds the series results.
             TileButton {
-                text: "Save graph"
-                onClicked: Julia.saveGraphs()
+                text: "Load"
+                enabled: window.controlsEnabled
+                onClicked: loadDialog.open()
 
                 ToolTip.visible: hovered
-                ToolTip.text: "Save the current graphs (PNG, PDF), their data (CSV) and a Jupyter notebook to a new folder in saved_graphs"
+                ToolTip.text: "Load a save of this model"
             }
 
             Item {
@@ -595,6 +570,7 @@ ApplicationWindow {
                         TextField {
                             id: perturbationWidthField
                             Layout.fillWidth: true
+                            enabled: window.controlsEnabled
                             selectByMouse: true
                             // Validators use the "C" locale: the fields show and
                             // Julia parses a decimal point, which a system locale
@@ -624,6 +600,7 @@ ApplicationWindow {
                         TextField {
                             id: perturbationHeightField
                             Layout.fillWidth: true
+                            enabled: window.controlsEnabled
                             selectByMouse: true
                             validator: DoubleValidator {
                                 notation: DoubleValidator.ScientificNotation
@@ -838,7 +815,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        visible: !modelDrawer.opened && !ui.seriesMode
+        visible: !modelDrawer.opened && !ui.seriesRunning
 
         HoverHandler {
             id: leftEdgeHover
@@ -852,7 +829,7 @@ ApplicationWindow {
         interval: 350
         repeat: false
         onTriggered: {
-            if (leftEdgeHover.hovered && !modelDrawer.opened && !ui.seriesMode)
+            if (leftEdgeHover.hovered && !modelDrawer.opened && !ui.seriesRunning)
                 window.openModelDrawer()
         }
     }
@@ -1304,6 +1281,21 @@ ApplicationWindow {
             color: "#9f252b"
             wrapMode: Text.Wrap
         }
+    }
+
+    // The shortcuts stay out of the way while a dialog is open.
+    SaveNameDialog {
+        id: saveDialog
+        title: "Save simulation"
+        onOpened: window.textEditorFocused = true
+        onClosed: window.textEditorFocused = false
+        onConfirmed: name => Julia.saveSimulation(name)
+    }
+
+    LoadDialog {
+        id: loadDialog
+        onOpened: window.textEditorFocused = true
+        onClosed: window.textEditorFocused = false
     }
 
     // Short confirmation (e.g. after Save) under the top bar.

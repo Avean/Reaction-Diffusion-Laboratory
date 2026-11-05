@@ -1,4 +1,5 @@
-name = "u: left / center / right"
+name = "u three points"
+description = "Adds noise to u at the left end, center and right end: width 13–25% of the panel, amplitude 1–2."
 
 [initial_values]
 u = 0.0

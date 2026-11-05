@@ -40,9 +40,64 @@ Window {
         disabled.buttonText: "#8a939e"
     }
 
+    // Input controls sized for the numbers they hold; the default size of the
+    // Basic style is 200 x 40 (fields) and 140 x 40 (combo boxes).
+    component CompactField: TextField {
+        implicitWidth: 64
+        implicitHeight: 30
+        topPadding: 3
+        bottomPadding: 3
+    }
+    component SettingsField: CompactField {
+        implicitWidth: 110
+    }
+    // A number on a perturbation card. It is sent only when it differs from the
+    // stored value, so entering and leaving the field changes nothing, and the
+    // field then returns to the stored value, also when the value was refused.
+    // A value outside the allowed range turns red and is dropped on leaving.
+    component PerturbationField: CompactField {
+        id: perturbationField
+        required property string shown
+        signal committed(string value)
+
+        function showStoredValue() {
+            text = Qt.binding(function() { return perturbationField.shown })
+        }
+
+        selectByMouse: true
+        enabled: !ui.seriesRunning
+        text: shown
+        color: acceptableInput ? palette.text : "#b91c1c"
+        onEditingFinished: {
+            if (Number(text) !== Number(shown))
+                committed(text)
+            showStoredValue()
+        }
+        onActiveFocusChanged: {
+            if (!activeFocus && !acceptableInput)
+                showStoredValue()
+        }
+    }
+    component CompactComboBox: ComboBox {
+        implicitWidth: 90
+        implicitHeight: 30
+    }
+
+    readonly property string initialConditionLabel: "Initial condition"
+    readonly property string currentStateLabel: "Current state"
+    readonly property string presetInitialLabel: "Preset"
+
     property var variables: JSON.parse(ui.variablesJson)
     property var perturbations: JSON.parse(ui.seriesPerturbationsJson)
     property var presets: JSON.parse(ui.seriesPresetsJson)
+    // ui.seriesSelectedPreset follows the selected panel, so this does too.
+    property string selectedPresetDescription: {
+        for (const preset of presets) {
+            if (preset.key === ui.seriesSelectedPreset)
+                return preset.description || ""
+        }
+        return ""
+    }
     property var results: {
         try {
             return JSON.parse(ui.seriesResultsJson)
@@ -102,6 +157,9 @@ Window {
     onSelectedPanelChanged: syncPerturbationModel()
     Component.onCompleted: syncPerturbationModel()
 
+    // Not transient for the main window: it has to be able to come to the front
+    // too, since its plots and controls stay in use in series mode.
+    transientParent: null
     visible: ui.seriesMode
     width: 1400
     height: 820
@@ -177,12 +235,16 @@ Window {
                     elide: Text.ElideRight
                 }
 
+                // Also during a run: the results so far, with their count.
                 TileButton {
-                    text: "Save graph"
-                    onClicked: Julia.saveGraphs()
+                    text: "Save series"
+                    enabled: ui.seriesCompletedRuns >= 1
+                    onClicked: saveSeriesDialog.open()
 
                     ToolTip.visible: hovered
-                    ToolTip.text: "Save the current graphs, the series results (PNG, PDF, CSV) and a Jupyter notebook to a new folder in saved_graphs"
+                    ToolTip.text: ui.seriesCompletedRuns >= 1
+                                  ? "Save the settings, perturbations and head statistics of this series to a file in saves/series"
+                                  : "Available after the first completed realization"
                 }
 
                 TileButton {
@@ -223,38 +285,27 @@ Window {
                             Layout.preferredHeight: 56
                             fontPixelSize: 18
                             tone: ui.seriesRunning ? "danger" : "success"
-                            enabled: ui.seriesRunning || seriesWindow.perturbations.length > 0
+                            enabled: ui.seriesRunning || (seriesWindow.perturbations.length > 0 && !ui.graphicsBusy)
                             text: !ui.seriesRunning
                                   ? "Start series"
-                                  : ui.seriesSingleRun
-                                    ? "Stop run one"
-                                    : "Stop series   (" + ui.seriesCompletedRuns + " / " + ui.seriesTotalRuns + ")"
+                                  : "Stop series   (" + ui.seriesCompletedRuns + " / " + ui.seriesTotalRuns + ")"
                             onClicked: {
-                                if (ui.seriesRunning)
+                                if (ui.seriesRunning) {
                                     Julia.stopSeries()
-                                else if (seriesWindow.commitSeriesSettings())
+                                    return
+                                }
+
+                                // A value that cannot be used stays in its field, in red.
+                                const focused = seriesWindow.activeFocusItem
+                                if (focused && focused.acceptableInput === false)
+                                    return
+
+                                // This tile takes no focus by itself: end the edit in
+                                // progress, so that what was typed counts for this run.
+                                forceActiveFocus()
+                                if (seriesWindow.commitSeriesSettings())
                                     Julia.startSeries()
                             }
-                        }
-
-                        // Diagnostics: add one realization to the statistics,
-                        // then restore the state captured on entering Series.
-                        TileButton {
-                            Layout.leftMargin: 10
-                            Layout.rightMargin: 10
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 40
-                            fontPixelSize: 15
-                            tone: "accent"
-                            enabled: !ui.seriesRunning && seriesWindow.perturbations.length > 0
-                            text: "Run one"
-                            onClicked: {
-                                if (seriesWindow.commitSeriesSettings())
-                                    Julia.runOneSeries()
-                            }
-
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Run one realization, add it to the statistics, then restore the original state on the main plots"
                         }
 
                         Label {
@@ -282,13 +333,13 @@ Window {
                                 rowSpacing: 7
 
                                 // Keep the visible value while a field has
-                                // focus. Start and Run one explicitly commit
-                                // all fields before creating a solver task.
+                                // focus. Start explicitly commits all fields
+                                // before creating a solver task.
                                 // Validators use the "C" locale: the fields
                                 // show and Julia parses a decimal point, which
                                 // a system locale such as pl_PL rejects.
                                 Label { text: "Number of runs" }
-                                TextField {
+                                SettingsField {
                                     id: runCountField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -297,7 +348,7 @@ Window {
                                 }
 
                                 Label { text: "Maximum time / panel" }
-                                TextField {
+                                SettingsField {
                                     id: maximumTimeField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 0.0000000001; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -306,7 +357,7 @@ Window {
                                 }
 
                                 Label { text: "Check interval (time)" }
-                                TextField {
+                                SettingsField {
                                     id: checkIntervalField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 0.0000000001; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -315,7 +366,7 @@ Window {
                                 }
 
                                 Label { text: "Tolerance on R" }
-                                TextField {
+                                SettingsField {
                                     id: toleranceField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 0.000000000000000001; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -324,7 +375,7 @@ Window {
                                 }
 
                                 Label { text: "Consecutive passed checks" }
-                                TextField {
+                                SettingsField {
                                     id: requiredChecksField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -333,7 +384,7 @@ Window {
                                 }
 
                                 Label { text: "Series dtmax" }
-                                TextField {
+                                SettingsField {
                                     id: dtmaxField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 0.0000000001; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -342,7 +393,7 @@ Window {
                                 }
 
                                 Label { text: "Safety step limit / panel" }
-                                TextField {
+                                SettingsField {
                                     id: maximumStepsField
                                     selectByMouse: true
                                     validator: DoubleValidator { bottom: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -351,8 +402,9 @@ Window {
                                 }
 
                                 Label { text: "Random seed" }
-                                TextField {
+                                SettingsField {
                                     id: seedField
+                                    implicitWidth: 160
                                     selectByMouse: true
                                     validator: RegularExpressionValidator { regularExpression: /[0-9]{1,19}/ }
                                     text: ui.seriesSeed
@@ -360,7 +412,7 @@ Window {
                                 }
 
                                 Label { text: "Head detection variable" }
-                                ComboBox {
+                                CompactComboBox {
                                     model: seriesWindow.variables
                                     currentIndex: Math.max(0, ui.seriesHeadVariable - 1)
                                     onActivated: Julia.setSeriesHeadVariable(currentIndex + 1)
@@ -404,7 +456,7 @@ Window {
                                     font.bold: true
                                 }
 
-                                ComboBox {
+                                CompactComboBox {
                                     id: presetComboBox
                                     Layout.fillWidth: true
                                     model: seriesWindow.presets
@@ -423,6 +475,40 @@ Window {
                                 }
 
                                 Label {
+                                    Layout.fillWidth: true
+                                    visible: text.length > 0
+                                    text: seriesWindow.selectedPresetDescription
+                                    color: "#68717d"
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                // Without initial values in the preset there is
+                                // only the live state to start from.
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Label { text: seriesWindow.initialConditionLabel }
+
+                                    TileButton {
+                                        dark: false
+                                        text: seriesWindow.currentStateLabel
+                                        checked: !ui.seriesUsePresetInitial
+                                        onClicked: Julia.setSeriesUsePresetInitial(false)
+                                    }
+
+                                    TileButton {
+                                        dark: false
+                                        enabled: ui.seriesPresetInitialAvailable
+                                        text: seriesWindow.presetInitialLabel
+                                        checked: ui.seriesUsePresetInitial
+                                        onClicked: Julia.setSeriesUsePresetInitial(true)
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+                                }
+
+                                Label {
                                     Layout.topMargin: 6
                                     text: "New perturbation"
                                     font.bold: true
@@ -433,26 +519,27 @@ Window {
 
                                     Label { text: "Variable" }
 
-                                    ComboBox {
-                                        Layout.fillWidth: true
+                                    CompactComboBox {
                                         model: seriesWindow.variables
                                         currentIndex: Math.max(0, ui.seriesSelectedVariable - 1)
                                         onActivated: Julia.selectSeriesVariable(currentIndex + 1)
                                     }
+
+                                    Item { Layout.fillWidth: true }
                                 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
 
                                     Label {
-                                        text: "Position: " + Number(ui.seriesPosition).toFixed(2)
-                                        Layout.preferredWidth: 138
+                                        text: "Position (relative): " + Number(ui.seriesPosition).toFixed(3)
+                                        Layout.preferredWidth: 170
                                     }
 
                                     Slider {
                                         Layout.fillWidth: true
                                         from: 0
-                                        to: Math.max(0.000001, Number(ui.seriesSelectedPanelLength))
+                                        to: 1
                                         value: Number(ui.seriesPosition)
                                         onMoved: Julia.setSeriesPosition(value)
                                     }
@@ -515,7 +602,7 @@ Window {
 
                                             Label {
                                                 Layout.fillWidth: true
-                                                text: "Perturbation " + perturbationCard.perturbationId + "   ·   x = " + Number(perturbationCard.position).toFixed(2)
+                                                text: "Perturbation " + perturbationCard.perturbationId
                                                 font.bold: true
                                             }
 
@@ -531,7 +618,7 @@ Window {
                                             Layout.fillWidth: true
 
                                             Label { text: "Panel" }
-                                            ComboBox {
+                                            CompactComboBox {
                                                 Layout.preferredWidth: 75
                                                 enabled: !ui.seriesRunning
                                                 focusPolicy: Qt.ClickFocus
@@ -541,88 +628,60 @@ Window {
                                             }
 
                                             Label { text: "Variable" }
-                                            ComboBox {
-                                                Layout.fillWidth: true
+                                            CompactComboBox {
                                                 enabled: !ui.seriesRunning
                                                 focusPolicy: Qt.ClickFocus
                                                 model: seriesWindow.variables
                                                 currentIndex: Math.max(0, perturbationCard.variable - 1)
                                                 onActivated: perturbationCard.commitField("variable", currentIndex + 1)
                                             }
-                                        }
 
-                                        RowLayout {
-                                            Layout.fillWidth: true
-
-                                            Label { text: "Position" }
-
-                                            TextField {
-                                                Layout.fillWidth: true
-                                                selectByMouse: true
-                                                enabled: !ui.seriesRunning
-                                                validator: DoubleValidator { bottom: 0; notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.position).toFixed(2)
-                                                onEditingFinished: perturbationCard.commitField("position", text)
-                                            }
+                                            Item { Layout.fillWidth: true }
                                         }
 
                                         GridLayout {
                                             Layout.fillWidth: true
-                                            columns: 4
+                                            columns: 5
                                             columnSpacing: 6
 
-                                            Label { text: "Width min (0–1)" }
-                                            TextField {
-                                                // Share the card width; the default width
-                                                // of the Basic style would overflow it.
-                                                Layout.fillWidth: true
-                                                Layout.preferredWidth: 60
-                                                Layout.minimumWidth: 44
-                                                selectByMouse: true
-                                                enabled: !ui.seriesRunning
+                                            Label { text: "Position (relative)" }
+                                            PerturbationField {
                                                 validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.widthMin).toFixed(2)
-                                                onEditingFinished: perturbationCard.commitField("widthMin", text)
+                                                shown: Number(perturbationCard.position).toFixed(3)
+                                                onCommitted: value => perturbationCard.commitField("position", value)
+                                            }
+                                            Item { Layout.columnSpan: 2 }
+                                            // Takes the spare card width, so the
+                                            // fields keep their size.
+                                            Item {
+                                                Layout.fillWidth: true
+                                                Layout.rowSpan: 3
+                                            }
+
+                                            Label { text: "Width min (0–1)" }
+                                            PerturbationField {
+                                                validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
+                                                shown: Number(perturbationCard.widthMin).toFixed(2)
+                                                onCommitted: value => perturbationCard.commitField("widthMin", value)
                                             }
                                             Label { text: "Width max (0–1)" }
-                                            TextField {
-                                                // Share the card width; the default width
-                                                // of the Basic style would overflow it.
-                                                Layout.fillWidth: true
-                                                Layout.preferredWidth: 60
-                                                Layout.minimumWidth: 44
-                                                selectByMouse: true
-                                                enabled: !ui.seriesRunning
+                                            PerturbationField {
                                                 validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.widthMax).toFixed(2)
-                                                onEditingFinished: perturbationCard.commitField("widthMax", text)
+                                                shown: Number(perturbationCard.widthMax).toFixed(2)
+                                                onCommitted: value => perturbationCard.commitField("widthMax", value)
                                             }
 
                                             Label { text: "Height min" }
-                                            TextField {
-                                                // Share the card width; the default width
-                                                // of the Basic style would overflow it.
-                                                Layout.fillWidth: true
-                                                Layout.preferredWidth: 60
-                                                Layout.minimumWidth: 44
-                                                selectByMouse: true
-                                                enabled: !ui.seriesRunning
+                                            PerturbationField {
                                                 validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.heightMin).toFixed(1)
-                                                onEditingFinished: perturbationCard.commitField("heightMin", text)
+                                                shown: Number(perturbationCard.heightMin).toFixed(1)
+                                                onCommitted: value => perturbationCard.commitField("heightMin", value)
                                             }
                                             Label { text: "Height max" }
-                                            TextField {
-                                                // Share the card width; the default width
-                                                // of the Basic style would overflow it.
-                                                Layout.fillWidth: true
-                                                Layout.preferredWidth: 60
-                                                Layout.minimumWidth: 44
-                                                selectByMouse: true
-                                                enabled: !ui.seriesRunning
+                                            PerturbationField {
                                                 validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
-                                                text: Number(perturbationCard.heightMax).toFixed(1)
-                                                onEditingFinished: perturbationCard.commitField("heightMax", text)
+                                                shown: Number(perturbationCard.heightMax).toFixed(1)
+                                                onCommitted: value => perturbationCard.commitField("heightMax", value)
                                             }
                                         }
                                     }
@@ -705,62 +764,6 @@ Window {
                     converged: resultsColumn.current === null ? [] : resultsColumn.current.patternConverged
                 }
 
-                ControlSection {
-                    title: "Domain rescale"
-                    enabled: !ui.seriesRunning
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 7
-
-                        Repeater {
-                            model: [
-                                { key: "1", resolution: 16 },
-                                { key: "2", resolution: 40 },
-                                { key: "3", resolution: 100 }
-                            ]
-
-                            TileButton {
-                                required property var modelData
-                                Layout.preferredWidth: 30
-                                dark: false
-                                text: modelData.key
-                                checked: Number(ui.domainResolution) === modelData.resolution
-                                enabled: !ui.seriesRunning
-                                onClicked: Julia.setDomainResolution(modelData.resolution)
-                            }
-                        }
-
-                        Slider {
-                            id: seriesDomainSlider
-                            Layout.fillWidth: true
-                            from: -2
-                            to: 3
-                            stepSize: 3 / Math.max(1, Number(ui.domainResolution) - 1)
-                            value: 2 * Math.log(Number(ui.domainLength)) / Math.LN10
-                            onMoved: Julia.setDomainExponent(value)
-                            WheelHandler {
-                                onWheel: function(event) {
-                                    if (!seriesDomainSlider.enabled || event.angleDelta.y === 0)
-                                        return
-                                    const next = Math.max(seriesDomainSlider.from,
-                                                          Math.min(seriesDomainSlider.to,
-                                                                   seriesDomainSlider.value +
-                                                                   (event.angleDelta.y > 0 ? seriesDomainSlider.stepSize : -seriesDomainSlider.stepSize)))
-                                    Julia.setDomainExponent(next)
-                                    event.accepted = true
-                                }
-                            }
-                        }
-
-                        Label {
-                            Layout.preferredWidth: 58
-                            text: Number(ui.domainLength).toPrecision(3)
-                            font.family: "Consolas"
-                        }
-                    }
-                }
-
                 Label {
                     Layout.fillWidth: true
                     visible: resultsColumn.current === null
@@ -790,7 +793,13 @@ Window {
         }
     }
 
-    // Short confirmation (e.g. after Save graph) under the header bar.
+    SaveNameDialog {
+        id: saveSeriesDialog
+        title: "Save series"
+        onConfirmed: name => Julia.saveSeries(name)
+    }
+
+    // Short confirmation (e.g. after Save series) under the header bar.
     NoticeToast {
         z: 10
         anchors.horizontalCenter: parent.horizontalCenter
