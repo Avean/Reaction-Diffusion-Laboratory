@@ -213,6 +213,61 @@ end
 # ============================================================
 # Spatial profile sets
 # ============================================================
+#
+# A profile set is a NamedTuple of profile functions. Besides the profiles
+# it may carry three optional entries:
+#
+#     formula     LaTeX of the profile, shown under Model parameters: a
+#                 string such as raw"\rho(x) = \rho_0 + \rho_1 x", or
+#                 piecewise(...) for a profile made of several parts.
+#     note        a short text shown under the formula.
+#     parameters  the parameters the profiles use, e.g. (:ρ0, :ρ1). Usually
+#                 not needed: they are found by evaluating the profiles once.
+#
+# While a set is active, the parameters that only other profile sets use
+# are hidden from the parameter fields.
+#
+# Example:
+#
+#     HeadFoot = (
+#         ρ = (x, p) -> ...,
+#         formula = piecewise(raw"\rho(x)",
+#             raw"\rho_0 + \rho_1 (x + 1 - \rho_{split})" => raw"x < \rho_{split}",
+#             raw"\rho_0 + \rho_1 (x - \rho_{split})" => raw"x \geq \rho_{split}",
+#         ),
+#     ),
+#
+# In formulas a parameter is written as the application writes it when it
+# substitutes the current values: a Greek first letter becomes its command
+# and the rest a subscript, in braces when it is longer than one character
+# (μu -> \mu_u, ρ0 -> \rho_0, ρsplit -> \rho_{split}, ρpeak_pos ->
+# \rho_{peak\_pos}).
+
+const SPATIAL_PROFILE_SET_METADATA = (:formula, :note, :parameters)
+
+
+# LaTeX of a profile made of several parts, drawn with a curly brace:
+#
+#     piecewise(raw"\rho(x)",
+#         expression_1 => condition_1,
+#         expression_2 => condition_2,
+#     )
+struct PiecewiseFormula
+    lhs::String
+    pieces::Vector{Pair{String, String}}
+end
+
+
+function piecewise(lhs::AbstractString, pieces::Pair...)
+    isempty(pieces) &&
+        error("piecewise needs at least one expression => condition pair.")
+
+    return PiecewiseFormula(
+        String(lhs),
+        [String(first(piece)) => String(last(piece)) for piece in pieces],
+    )
+end
+
 
 function _normalize_spatial_profiles(spatial_profiles)
     spatial_profiles isa NamedTuple ||
@@ -222,13 +277,21 @@ function _normalize_spatial_profiles(spatial_profiles)
 end
 
 
+function _profile_entry_names(profile_set::NamedTuple)
+    return [
+        name for name in propertynames(profile_set)
+        if !(name in SPATIAL_PROFILE_SET_METADATA)
+    ]
+end
+
+
 function _wrap_one_spatial_profile_set(
     profile_set::NamedTuple,
     param_names::Vector{Symbol},
 )
     wrapped_profiles = Tuple{String, Function}[]
 
-    for name in propertynames(profile_set)
+    for name in _profile_entry_names(profile_set)
         profile_fun = getproperty(profile_set, name)
 
         profile_fun isa Function ||
@@ -249,12 +312,47 @@ function _wrap_one_spatial_profile_set(
         )
     end
 
+    isempty(wrapped_profiles) &&
+        error("A spatial profile set must contain at least one profile function.")
+
     return wrapped_profiles
 end
 
 
+function _profile_set_metadata(
+    profile_set::NamedTuple,
+    set_name::AbstractString,
+    param_names::Vector{Symbol},
+)
+    formula = get(profile_set, :formula, nothing)
+
+    if formula isa AbstractString
+        formula = String(formula)
+    elseif !(formula === nothing || formula isa PiecewiseFormula)
+        error("The formula of spatial profile set $(set_name) must be a LaTeX string or piecewise(...).")
+    end
+
+    note = get(profile_set, :note, "")
+    note isa AbstractString ||
+        error("The note of spatial profile set $(set_name) must be a string.")
+
+    parameters = get(profile_set, :parameters, nothing)
+
+    if parameters !== nothing
+        parameters = Symbol[Symbol(name) for name in parameters]
+
+        for name in parameters
+            name in param_names ||
+                error("Spatial profile set $(set_name) lists unknown parameter $(name).")
+        end
+    end
+
+    return (formula = formula, note = String(note), parameters = parameters)
+end
+
+
 function _is_flat_spatial_profile_tuple(spatial_profiles::NamedTuple)
-    names = propertynames(spatial_profiles)
+    names = _profile_entry_names(spatial_profiles)
 
     isempty(names) &&
         return false
@@ -273,15 +371,12 @@ function _is_spatial_profile_set_tuple(spatial_profiles::NamedTuple)
 end
 
 
-function _wrap_spatial_profile_sets(
-    spatial_profiles::NamedTuple,
-    param_names::Vector{Symbol},
-)
-    names = propertynames(spatial_profiles)
+function _spatial_profile_set_list(spatial_profiles::NamedTuple)
+    # The profile sets as (name, set) pairs.
+    set_list = Tuple{String, NamedTuple}[]
 
-    if isempty(names)
-        return Tuple{String, Vector{Tuple{String, Function}}}[]
-    end
+    isempty(propertynames(spatial_profiles)) &&
+        return set_list
 
     # Backward-compatible flat syntax:
     #
@@ -291,14 +386,8 @@ function _wrap_spatial_profile_sets(
     #
     # becomes one set named "default".
     if _is_flat_spatial_profile_tuple(spatial_profiles)
-        wrapped_profiles = _wrap_one_spatial_profile_set(
-            spatial_profiles,
-            param_names,
-        )
-
-        return [
-            ("default", wrapped_profiles),
-        ]
+        push!(set_list, ("default", spatial_profiles))
+        return set_list
     end
 
     # Grouped syntax:
@@ -313,23 +402,11 @@ function _wrap_spatial_profile_sets(
     #         ),
     #     )
     if _is_spatial_profile_set_tuple(spatial_profiles)
-        wrapped_sets = Tuple{String, Vector{Tuple{String, Function}}}[]
-
-        for set_name in names
-            profile_set = getproperty(spatial_profiles, set_name)
-
-            wrapped_profiles = _wrap_one_spatial_profile_set(
-                profile_set,
-                param_names,
-            )
-
-            push!(
-                wrapped_sets,
-                (string(set_name), wrapped_profiles),
-            )
+        for set_name in propertynames(spatial_profiles)
+            push!(set_list, (string(set_name), getproperty(spatial_profiles, set_name)))
         end
 
-        return wrapped_sets
+        return set_list
     end
 
     error("""
@@ -352,6 +429,170 @@ function _wrap_spatial_profile_sets(
             ),
         )
     """)
+end
+
+
+function _wrap_spatial_profile_sets(
+    set_list::Vector{Tuple{String, NamedTuple}},
+    param_names::Vector{Symbol},
+)
+    wrapped_sets = Tuple{String, Vector{Tuple{String, Function}}}[]
+
+    for (set_name, profile_set) in set_list
+        push!(
+            wrapped_sets,
+            (set_name, _wrap_one_spatial_profile_set(profile_set, param_names)),
+        )
+    end
+
+    return wrapped_sets
+end
+
+
+# ============================================================
+# Parameters used by the profile sets
+# ============================================================
+#
+# Every profile set is evaluated once with the default parameters while a
+# tracer records which parameters it reads. The reaction, the initial
+# condition and the diffusion coefficients are traced the same way, and a
+# parameter they read is never hidden.
+
+struct _ParameterTracer{T <: NamedTuple}
+    values::T
+    read::Set{Symbol}
+end
+
+
+function Base.getproperty(tracer::_ParameterTracer, name::Symbol)
+    push!(getfield(tracer, :read), name)
+    return getproperty(getfield(tracer, :values), name)
+end
+
+
+Base.propertynames(tracer::_ParameterTracer) =
+    propertynames(getfield(tracer, :values))
+
+
+function _traced_parameters(f::Function, values::NamedTuple)
+    tracer = _ParameterTracer(values, Set{Symbol}())
+    f(tracer)
+    return getfield(tracer, :read)
+end
+
+
+function _profile_set_read_parameters(
+    profile_set::NamedTuple,
+    values::NamedTuple,
+    x::Vector{Float64},
+)
+    read = Set{Symbol}()
+
+    for name in _profile_entry_names(profile_set)
+        profile_fun = getproperty(profile_set, name)
+        # With a generator, profiles that vary in series runs read their
+        # variation parameters as well.
+        rng = Random.Xoshiro(1)
+
+        union!(read, _traced_parameters(values) do p
+            applicable(profile_fun, x, p, rng) ?
+                profile_fun(x, p, rng) :
+                profile_fun(x, p)
+        end)
+    end
+
+    return read
+end
+
+
+function _hidden_profile_parameters(
+    set_list::Vector{Tuple{String, NamedTuple}},
+    metadata,
+    param_names::Vector{Symbol},
+    default_params::AbstractDict{Symbol},
+    vars::Vector{Symbol},
+    var_index::Dict{Symbol, Int},
+    initial::Function,
+    reaction::Function,
+    diffusion::NamedTuple,
+)
+    hidden = Vector{Symbol}[Symbol[] for _ in set_list]
+    isempty(set_list) && return hidden
+
+    x = collect(range(0.0, 1.0; length = 21))
+    values = merge(
+        _make_named_parameters(default_params, param_names),
+        NamedTuple{(DOMAIN_LENGTH_FIELD,)}((1.0,)),
+    )
+
+    set_reads = Union{Nothing, Set{Symbol}}[]
+
+    for ((set_name, profile_set), meta) in zip(set_list, metadata)
+        if meta.parameters !== nothing
+            push!(set_reads, Set{Symbol}(meta.parameters))
+            continue
+        end
+
+        read = try
+            intersect(_profile_set_read_parameters(profile_set, values, x), param_names)
+        catch error
+            @warn "Spatial profile set $(set_name) could not be evaluated to find the parameters it uses; none are hidden while it is active." exception = error
+            nothing
+        end
+
+        push!(set_reads, read)
+    end
+
+    # Parameters read outside the profiles stay visible for every set.
+    profile_names = unique(vcat(
+        [_profile_entry_names(profile_set) for (_, profile_set) in set_list]...,
+    ))
+    model_values = merge(
+        values,
+        NamedTuple{Tuple(profile_names)}(Tuple(ones(length(x)) for _ in profile_names)),
+    )
+
+    outside = try
+        read = Set{Symbol}()
+
+        union!(read, _traced_parameters(model_values) do p
+            U = VariableViews(fill(0.5, length(x), length(vars)), var_index)
+            F = VariableViews(zeros(length(x), length(vars)), var_index)
+            reaction(F, U, x, p, 0.0)
+        end)
+
+        union!(read, _traced_parameters(model_values) do p
+            U = VariableViews(zeros(length(x), length(vars)), var_index)
+            initial(U, x, p)
+        end)
+
+        for var in propertynames(diffusion)
+            coeff = getproperty(diffusion, var)
+
+            if coeff isa Symbol
+                push!(read, coeff)
+            elseif coeff isa Function
+                union!(read, _traced_parameters(p -> coeff(p), model_values))
+            end
+        end
+
+        read
+    catch error
+        @warn "The reaction or initial condition could not be evaluated to find the parameters they use; no parameter is hidden." exception = error
+        return hidden
+    end
+
+    known_reads = [read for read in set_reads if read !== nothing]
+    isempty(known_reads) && return hidden
+
+    profile_parameters = setdiff(union(known_reads...), outside)
+
+    for (index, read) in enumerate(set_reads)
+        read === nothing && continue
+        hidden[index] = sort!(collect(setdiff(profile_parameters, read)); by = String)
+    end
+
+    return hidden
 end
 
 
@@ -503,10 +744,26 @@ function RDModel(;
     _validate_diffusion(diffusion, vars, param_names)
 
     spatial_profiles = _normalize_spatial_profiles(spatial_profiles)
+    spatial_profile_set_list = _spatial_profile_set_list(spatial_profiles)
 
     wrapped_spatial_profile_sets = _wrap_spatial_profile_sets(
-        spatial_profiles,
+        spatial_profile_set_list,
         param_names,
+    )
+    spatial_profile_metadata = [
+        _profile_set_metadata(profile_set, set_name, param_names)
+        for (set_name, profile_set) in spatial_profile_set_list
+    ]
+    spatial_profile_hidden_parameters = _hidden_profile_parameters(
+        spatial_profile_set_list,
+        spatial_profile_metadata,
+        param_names,
+        default_params,
+        vars,
+        var_index,
+        initial,
+        reaction,
+        diffusion,
     )
 
     if !isempty(wrapped_spatial_profile_sets)
@@ -597,6 +854,46 @@ function RDModel(;
         rhs! = rhs_wrapped!,
         default_boundary_condition = default_boundary_condition,
         spatial_profile_sets = wrapped_spatial_profile_sets,
+        spatial_profile_formulas = Any[meta.formula for meta in spatial_profile_metadata],
+        spatial_profile_notes = String[meta.note for meta in spatial_profile_metadata],
+        spatial_profile_hidden_parameters = spatial_profile_hidden_parameters,
         latex_equations = _make_latex_equations(latex_equations),
     )
+end
+
+
+# ============================================================
+# Active profile set: formula and visible parameters
+# ============================================================
+
+function active_spatial_profile_formula(
+    model::ModelSpec,
+    p_dict::AbstractDict{Symbol},
+)
+    # The formula and note of the active profile set; nothing and "" when
+    # the model has no profiles or the set declares no formula.
+    isempty(model.spatial_profile_sets) && return (formula = nothing, note = "")
+
+    index = _active_spatial_profile_set_index(p_dict, model.spatial_profile_sets)
+    formula = index <= length(model.spatial_profile_formulas) ?
+              model.spatial_profile_formulas[index] : nothing
+    note = index <= length(model.spatial_profile_notes) ?
+           model.spatial_profile_notes[index] : ""
+
+    return (formula = formula, note = note)
+end
+
+
+function hidden_spatial_profile_parameters(
+    model::ModelSpec,
+    p_dict::AbstractDict{Symbol},
+)
+    # Parameters used only by profile sets other than the active one.
+    isempty(model.spatial_profile_sets) && return Symbol[]
+    isempty(model.spatial_profile_hidden_parameters) && return Symbol[]
+
+    index = _active_spatial_profile_set_index(p_dict, model.spatial_profile_sets)
+    index <= length(model.spatial_profile_hidden_parameters) || return Symbol[]
+
+    return model.spatial_profile_hidden_parameters[index]
 end

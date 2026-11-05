@@ -1,212 +1,241 @@
 # Models/GiererMainhardt/rho/model.jl
 
 # ============================================================
-# Classical Gierer-Meinhardt reaction-diffusion system
+# Gierer-Meinhardt system with a source density rho(x)
 # ============================================================
 #
 # Model:
 #
-#     u_t = Du u_xx + a - b u + u^2 / (v+1)
-#     v_t = Dv v_xx + u^2 - v
+#     u_t = Du u_xx + a rho(x) u^2 / (v + 1) - mu_u u + p_u
+#     v_t = Dv v_xx + b rho(x) u^2 - mu_v v + p_v
 #
-# Here:
-#
-#     u = activator
-#     v = inhibitor
-#
-# Usually Du << Dv.
+# rho(x) is one of the profiles below, with x in [0, 1] whatever the
+# domain length. Linear profiles are built from rho0 + rho1 y, exponential
+# ones from rhoa + rhob exp(rhoc y). The two-part profiles jump at
+# x = ρsplit, a fraction of the domain; 0 or 1 leaves a single part.
 #
 # ============================================================
 
+let
+    # x lies in the left part of a two-part profile.
+    split_point(p) = clamp(p.ρsplit, 0.0, 1.0)
+    left_of_split(x, s) = s >= 1 || x < s
 
-# Number of grid points left of the jump in the two-part profiles: ρsplit is
-# the jump position as a fraction of the whole domain (0.5 = the middle; 0 and
-# 1 leave a single part, so no jump).
-rho_split_index(x, p) = round(Int, clamp(p.ρsplit, 0, 1) * length(x))
-
-
-# Exponential profiles ρ(x) = ρa + ρb exp(ρc x), evaluated once for the part
-# left of the jump and once for the part right of it. In a series realization
-# (rng given) each part draws its own ρa, ρb, ρc, varied by a relative ±ρσa,
-# ±ρσb, ±ρσc (uniform); outside series mode both parts use the nominal values.
-function rho_exponential_parts(x, p, rng)
-    vary(value, σ) = rng === nothing ? value : value * (1 + σ * (2 * rand(rng) - 1))
-
-    function draw()
-        a = vary(p.ρa, p.ρσa)
-        b = vary(p.ρb, p.ρσb)
-        c = vary(p.ρc, p.ρσc)
-        return @. a + b * exp(c * x)
+    # Values of a two-part profile: left(x, s) left of the jump, right(x, s)
+    # right of it.
+    function two_parts(x, p, left, right)
+        s = split_point(p)
+        return [left_of_split(xi, s) ? left(xi, s) : right(xi, s) for xi in x]
     end
 
-    left = draw()
-    right = draw()
-    return left, right, rho_split_index(x, p), length(x)
-end
+    linear(p, y) = p.ρ0 + p.ρ1 * y
 
+    # The linear profile restarting at its two drops ρz1 and ρz2.
+    function zigzag(p, x)
+        x < p.ρz1 && return linear(p, x)
+        x < p.ρz2 && return linear(p, x - p.ρz1)
+        return linear(p, x - p.ρz2)
+    end
 
-RDModel(
-    id = :gierer_meinhardt,
+    # In a series realization (rng given) the parts left and right of the
+    # jump draw their own ρa, ρb, ρc, varied by a relative ±ρσa, ±ρσb, ±ρσc
+    # (uniform); outside series mode both use the nominal values.
+    function exponential_parts(p, rng)
+        vary(value, σ) = rng === nothing ? value : value * (1 + σ * (2 * rand(rng) - 1))
+        draw() = (a = vary(p.ρa, p.ρσa), b = vary(p.ρb, p.ρσb), c = vary(p.ρc, p.ρσc))
+        left = draw()
+        right = draw()
+        return left, right
+    end
 
-    display_name = "Rho profile",
-    description = "A Gierer-Meinhardt model modulated by the spatial profile rho(x). Used to test the role of spatial gradient",
+    exponential(e, y) = e.a + e.b * exp(e.c * y)
 
-    variables = (:u, :v),
+    exponential_note = "Series: the parts left and right of ρsplit draw their own ρa, ρb, ρc in every run, each within ±ρσa, ±ρσb, ±ρσc (relative). With all ρσ = 0 nothing is random."
 
-    parameters = (
-        Du = 1e-2,
-        Dv = 1e0,
+    RDModel(
+        id = :gierer_meinhardt,
 
-        a = 1.5,
-        b = 2.0,
+        display_name = "Rho profile",
+        description = "A Gierer-Meinhardt model modulated by the spatial profile rho(x). Used to test the role of spatial gradient",
 
-        μu = 0.5,
-        μv = 1.0,
+        variables = (:u, :v),
 
-        pu = 0.0,
-        pv = 0.0,
+        parameters = (
+            Du = 1e-2,
+            Dv = 1e0,
 
-        ρ0 = 1.0,
-        ρ1 = 0.5,
+            a = 1.5,
+            b = 2.0,
 
-        # Two-part profiles (HeadFoot, ..., ExpHeadFootR): position of the
-        # jump between the parts, as a fraction of the whole domain.
-        ρsplit = 0.5,
+            μu = 0.5,
+            μv = 1.0,
 
-        # Exponential profiles: ρ(x) = ρa + ρb exp(ρc x)
-        ρa = 0.5,
-        ρb = 0.5,
-        ρc = 1.0,
+            pu = 0.0,
+            pv = 0.0,
 
-        # Series mode only: relative variation of ρa, ρb, ρc, drawn
-        # separately for each half of the domain in every realization.
-        ρσa = 0.0,
-        ρσb = 0.0,
-        ρσc = 0.0,
-    ),
+            # Linear profiles: ρ0 + ρ1 y
+            ρ0 = 0.75,
+            ρ1 = 0.5,
 
-    initial = function (U, x, p)
+            # Two-part profiles: position of the jump between the parts, as
+            # a fraction of the whole domain.
+            ρsplit = 0.5,
 
-        u0 = 1.0
-        v0 = 2.0
+            # ZigZag: positions of its two drops, as fractions of the domain.
+            ρz1 = 0.2,
+            ρz2 = 0.9,
 
-        U.u .= u0 .+ 0.01 .* randn(length(x))
-        U.v .= v0 .+ 0.01 .* randn(length(x))
+            # Exponential profiles: ρa + ρb exp(ρc y)
+            ρa = 0.5,
+            ρb = 0.5,
+            ρc = 1.0,
 
-        return nothing
-    end,
-
-    
-
-
-    reaction = function (F, U, x, p, t)
-        @. F.u = p.a * p.ρ * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu
-        @. F.v = p.b * p.ρ * U.u^2 - p.μv * U.v + p.pv
-
-        return nothing
-    end,
-
-    diffusion = (
-        u = :Du,
-        v = :Dv,
-    ),
-
-
-
-
-    spatial_profiles = (
-        FootHead = (
-            ρ = (x, p) -> begin
-                ρx = @. p.ρ0 - p.ρ1 / 2 + p.ρ1 * x
-                return ρx
-            end,
+            # Series mode only: relative variation of ρa, ρb, ρc, drawn
+            # separately for each part of the domain in every realization.
+            ρσa = 0.0,
+            ρσb = 0.0,
+            ρσc = 0.0,
         ),
 
-        # The jump between the two parts is at ρsplit: J points lie left of it.
-        HeadFoot = (
-            ρ = (x, p) -> begin
-                J = rho_split_index(x, p)
-                N = length(x)
-                ρx = @. p.ρ0 - p.ρ1 / 2 + p.ρ1 * x
+        initial = function (U, x, p)
 
-                return [ρx[(N - J + 1):end]; ρx[1:(N - J)]]
-            end,
+            u0 = 1.0
+            v0 = 2.0
+
+            U.u .= u0 .+ 0.01 .* randn(length(x))
+            U.v .= v0 .+ 0.01 .* randn(length(x))
+
+            return nothing
+        end,
+
+        reaction = function (F, U, x, p, t)
+            @. F.u = p.a * p.ρ * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu
+            @. F.v = p.b * p.ρ * U.u^2 - p.μv * U.v + p.pv
+
+            return nothing
+        end,
+
+        diffusion = (
+            u = :Du,
+            v = :Dv,
         ),
 
-        FootHeadReverse = (
-            ρ = (x, p) -> begin
-                J = rho_split_index(x, p)
-                ρx = @. p.ρ0 - p.ρ1 / 2 + p.ρ1 * x
+        spatial_profiles = (
+            FootHead = (
+                ρ = (x, p) -> [linear(p, xi) for xi in x],
+                formula = raw"\rho(x) = \rho_0 + \rho_1 x",
+            ),
 
-                return [ρx[1:J]; reverse(ρx[(J + 1):end])]
-            end,
-        ),
+            HeadFoot = (
+                ρ = (x, p) -> two_parts(
+                    x, p,
+                    (xi, s) -> linear(p, xi + 1 - s),
+                    (xi, s) -> linear(p, xi - s),
+                ),
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_0 + \rho_1 (x + 1 - \rho_{split})" => raw"x < \rho_{split}",
+                    raw"\rho_0 + \rho_1 (x - \rho_{split})" => raw"x \geq \rho_{split}",
+                ),
+            ),
 
-        HeadFootReverse = (
-            ρ = (x, p) -> begin
-                J = rho_split_index(x, p)
-                ρx = @. p.ρ0 - p.ρ1 / 2 + p.ρ1 * x
+            FootHeadReverse = (
+                ρ = (x, p) -> two_parts(
+                    x, p,
+                    (xi, s) -> linear(p, xi),
+                    (xi, s) -> linear(p, 1 + s - xi),
+                ),
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_0 + \rho_1 x" => raw"x < \rho_{split}",
+                    raw"\rho_0 + \rho_1 (1 + \rho_{split} - x)" => raw"x \geq \rho_{split}",
+                ),
+            ),
 
-                return [reverse(ρx[1:J]); ρx[(J + 1):end]]
-            end,
-        ),
+            HeadFootReverse = (
+                ρ = (x, p) -> two_parts(
+                    x, p,
+                    (xi, s) -> linear(p, s - xi),
+                    (xi, s) -> linear(p, xi),
+                ),
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_0 + \rho_1 (\rho_{split} - x)" => raw"x < \rho_{split}",
+                    raw"\rho_0 + \rho_1 x" => raw"x \geq \rho_{split}",
+                ),
+            ),
 
-        ZigZag = (
-            ρ = (x, p) -> begin
-                x1 = 0.2
-                x2 = 0.9
+            ZigZag = (
+                ρ = (x, p) -> [zigzag(p, xi) for xi in x],
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_0 + \rho_1 x" => raw"x < \rho_{z1}",
+                    raw"\rho_0 + \rho_1 (x - \rho_{z1})" => raw"\rho_{z1} \leq x < \rho_{z2}",
+                    raw"\rho_0 + \rho_1 (x - \rho_{z2})" => raw"x \geq \rho_{z2}",
+                ),
+            ),
 
-                ρx = @. ifelse(
-                    x < x1,
-                    p.ρ0 + p.ρ1 * x,
-                    ifelse(
-                        x < x2,
-                        p.ρ0 + p.ρ1 * (x - x1),
-                        p.ρ0 + p.ρ1 * (x - x2),
+            ExpFootHead = (
+                ρ = (x, p, rng) -> begin
+                    left, right = exponential_parts(p, rng)
+                    two_parts(
+                        x, p,
+                        (xi, s) -> exponential(left, xi),
+                        (xi, s) -> exponential(right, xi),
                     )
-                )
+                end,
+                formula = raw"\rho(x) = \rho_a + \rho_b e^{\rho_c x}",
+                note = exponential_note,
+            ),
 
-                return ρx
-            end,
+            ExpHeadFoot = (
+                ρ = (x, p, rng) -> begin
+                    left, right = exponential_parts(p, rng)
+                    two_parts(
+                        x, p,
+                        (xi, s) -> exponential(left, xi + 1 - s),
+                        (xi, s) -> exponential(right, xi - s),
+                    )
+                end,
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_a + \rho_b e^{\rho_c (x + 1 - \rho_{split})}" => raw"x < \rho_{split}",
+                    raw"\rho_a + \rho_b e^{\rho_c (x - \rho_{split})}" => raw"x \geq \rho_{split}",
+                ),
+                note = exponential_note,
+            ),
+
+            ExpFootHeadR = (
+                ρ = (x, p, rng) -> begin
+                    left, right = exponential_parts(p, rng)
+                    two_parts(
+                        x, p,
+                        (xi, s) -> exponential(left, xi),
+                        (xi, s) -> exponential(right, 1 + s - xi),
+                    )
+                end,
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_a + \rho_b e^{\rho_c x}" => raw"x < \rho_{split}",
+                    raw"\rho_a + \rho_b e^{\rho_c (1 + \rho_{split} - x)}" => raw"x \geq \rho_{split}",
+                ),
+                note = exponential_note,
+            ),
+
+            ExpHeadFootR = (
+                ρ = (x, p, rng) -> begin
+                    left, right = exponential_parts(p, rng)
+                    two_parts(
+                        x, p,
+                        (xi, s) -> exponential(left, s - xi),
+                        (xi, s) -> exponential(right, xi),
+                    )
+                end,
+                formula = piecewise(raw"\rho(x)",
+                    raw"\rho_a + \rho_b e^{\rho_c (\rho_{split} - x)}" => raw"x < \rho_{split}",
+                    raw"\rho_a + \rho_b e^{\rho_c x}" => raw"x \geq \rho_{split}",
+                ),
+                note = exponential_note,
+            ),
         ),
 
-        # The part left of the jump comes from the left draw, the part right
-        # of it from the right draw.
-        ExpFootHead = (
-            ρ = (x, p, rng) -> begin
-                left, right, J, N = rho_exponential_parts(x, p, rng)
-
-                return [left[1:J]; right[(J + 1):end]]
-            end,
+        latex_equations = (
+        raw"\partial_t u = D_u \partial_{xx} u + a\cdot\rho(x) \frac{u^2}{v + 1} - \mu_u u",
+        raw"\partial_t v = D_v \partial_{xx} v + b\cdot \rho(x) u^2 - \mu_v v",
         ),
-
-        ExpHeadFoot = (
-            ρ = (x, p, rng) -> begin
-                left, right, J, N = rho_exponential_parts(x, p, rng)
-
-                return [left[(N - J + 1):end]; right[1:(N - J)]]
-            end,
-        ),
-
-        ExpFootHeadR = (
-            ρ = (x, p, rng) -> begin
-                left, right, J, N = rho_exponential_parts(x, p, rng)
-
-                return [left[(N - J + 1):end]; reverse(right[1:(N - J)])]
-            end,
-        ),
-
-        ExpHeadFootR = (
-            ρ = (x, p, rng) -> begin
-                left, right, J, N = rho_exponential_parts(x, p, rng)
-
-                return [reverse(left[1:J]); right[(J + 1):end]]
-            end,
-        ),
-    ),
-
-    latex_equations = (
-    raw"\partial_t u = D_u \partial_{xx} u + a\cdot\rho(x) \frac{u^2}{v + 1} - \mu_u u",
-    raw"\partial_t v = D_v \partial_{xx} v + b\cdot \rho(x) u^2 - \mu_v v",
-    ),
-)
+    )
+end

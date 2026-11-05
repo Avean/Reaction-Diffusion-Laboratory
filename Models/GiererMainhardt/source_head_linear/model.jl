@@ -50,6 +50,11 @@ RDModel(
         ρ0 = 1.0,
         ρ1 = 1.5,
         # ρ1 = 0.5,
+
+        # ZigZag profile: positions of its two drops, as fractions of the
+        # domain.
+        ρz1 = 0.2,
+        ρz2 = 0.9,
     ),
 
     initial = function (U, x, p)
@@ -66,7 +71,7 @@ RDModel(
         
 
 
-        sd_base = @. p.ρ0 - p.ρ1 / 2 + p.ρ1 * x
+        sd_base = @. p.ρ0 + p.ρ1 * x
         H = div(length(x), 2)
 
         # profile = :Constant
@@ -90,8 +95,8 @@ RDModel(
             U.sd .= [reverse(sd_base[1:H]); sd_base[(H + 1):end]]
         
         elseif profile == :ZigZag
-            x1 = 0.2
-            x2 = 0.9
+            x1 = p.ρz1
+            x2 = p.ρz2
 
             s = p.ρ1
 

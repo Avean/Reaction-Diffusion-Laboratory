@@ -38,9 +38,6 @@ RDModel(
 
         pu = 0.0,
         pv = 0.0,
-
-        ρ0 = 1.0,
-        ρ1 = 0.5,
     ),
 
     initial = function (U, x, p)

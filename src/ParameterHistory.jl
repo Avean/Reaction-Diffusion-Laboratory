@@ -49,7 +49,7 @@ function write_history_model!(io::IO, controller::QMLController)
     println(io, "Model parameters")
     history_columns(
         io,
-        [String(name) => history_number(sim.params[name]) for name in RD.public_model_parameter_names(model)],
+        [String(name) => history_number(sim.params[name]) for name in RD.visible_model_parameter_names(model, sim.params)],
     )
 
     if !isempty(model.spatial_profile_sets)

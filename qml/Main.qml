@@ -840,7 +840,8 @@ ApplicationWindow {
         edge: Qt.LeftEdge
         width: Math.min(
             window.width * 0.90,
-            Math.max(410, Number(ui.equationPreferredWidth) + 58)
+            Math.max(410, Math.max(Number(ui.equationPreferredWidth),
+                                   Number(ui.profileFormulaWidth)) + 58)
         )
         height: window.height - topBar.height - bottomBar.height
         y: topBar.height
@@ -1030,8 +1031,40 @@ ApplicationWindow {
                             Layout.rightMargin: 9
 
                             ColumnLayout {
+                                id: parameterColumn
                                 Layout.fillWidth: true
                                 spacing: 6
+
+                                // Formula of the active spatial profile set, at the
+                                // scale of the equations; only its parameters follow.
+                                Image {
+                                    visible: ui.profileFormulaImage.length > 0
+                                    Layout.preferredWidth: Math.min(parameterColumn.width,
+                                                                    Number(ui.profileFormulaWidth))
+                                    Layout.preferredHeight: implicitWidth > 0
+                                                            ? Layout.preferredWidth * implicitHeight / implicitWidth
+                                                            : 0
+                                    source: ui.profileFormulaImage
+                                    sourceSize.width: Math.max(
+                                        2400,
+                                        Math.ceil(Layout.preferredWidth * window.screen.devicePixelRatio * 2.5)
+                                    )
+                                    fillMode: Image.PreserveAspectFit
+                                    horizontalAlignment: Image.AlignLeft
+                                    asynchronous: false
+                                    cache: true
+                                    smooth: true
+                                    mipmap: true
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    visible: ui.profileFormulaNote.length > 0
+                                    text: ui.profileFormulaNote
+                                    wrapMode: Text.WordWrap
+                                    color: "#68717d"
+                                    font.italic: true
+                                }
 
                                 Repeater {
                                     model: parameterModel

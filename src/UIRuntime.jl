@@ -356,6 +356,18 @@ function public_model_parameter_names(model::ModelSpec)
 end
 
 
+function visible_model_parameter_names(
+    model::ModelSpec,
+    params::AbstractDict{Symbol},
+)
+    # The parameter fields: every public parameter except those used only by
+    # profile sets other than the active one.
+    hidden = hidden_spatial_profile_parameters(model, params)
+
+    return [name for name in public_model_parameter_names(model) if !(name in hidden)]
+end
+
+
 function current_spatial_profile_values(simulations::AbstractVector{<:SimulationState})
     # The active profiles carried by every panel: one name => values table
     # per panel.
@@ -947,6 +959,9 @@ function set_active_spatial_profile_set_app!(
         steps_per_frame = steps_per_frame,
         worker_sleep_time = worker_sleep_time,
     )
+
+    # The parameter fields and the profile formula depend on the active set.
+    app.spatial_profile_set_revision[] += 1
 
     return nothing
 end

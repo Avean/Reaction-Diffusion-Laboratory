@@ -49,6 +49,17 @@ Base.@kwdef struct ModelSpec
     Tuple{String, Vector{Tuple{String, Function}}}[]
     # Optional spatial profiles that can be displayed in the UI.
 
+    spatial_profile_formulas::Vector{Any} = Any[]
+    # Optional LaTeX formula of every profile set, in the order of
+    # spatial_profile_sets: a String, a PiecewiseFormula or nothing.
+
+    spatial_profile_notes::Vector{String} = String[]
+    # Optional short note shown under the formula of every profile set.
+
+    spatial_profile_hidden_parameters::Vector{Vector{Symbol}} = Vector{Symbol}[]
+    # For every profile set, the parameters that only other profile sets
+    # use; they are hidden from the parameter fields while it is active.
+
     latex_equations::Vector{String} = String[]
     # Optional LaTeX strings describing the equations, for display in the UI.
 end
@@ -311,4 +322,9 @@ mutable struct AppState
     # and boundary-condition changes and cleared by a model change. They are
     # the model's own values: the domain length never changes a parameter,
     # it only rescales diffusion inside the right-hand side.
+
+    spatial_profile_set_revision::Observable{Int}
+    # Incremented when the Previous / Next buttons under the profile plots
+    # change the active profile set, so the interface can show the set's
+    # parameters and formula.
 end

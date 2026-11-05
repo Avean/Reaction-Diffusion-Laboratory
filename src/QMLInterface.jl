@@ -84,6 +84,11 @@ mutable struct QMLBindings
     main_window_visible::Observable{Bool}
     notice::Observable{String}
     # Short confirmation shown by the main window, e.g. after Save.
+    profile_formula_image::Observable{String}
+    profile_formula_width::Observable{Float64}
+    profile_formula_note::Observable{String}
+    # Formula of the active spatial profile set, shown under Model
+    # parameters: an SVG data URI ("" for none), its width and a note.
 end
 
 
@@ -239,7 +244,7 @@ end
 
 function model_parameters_json(model::RD.ModelSpec, params::AbstractDict{Symbol})
     entries = String[]
-    for name in RD.public_model_parameter_names(model)
+    for name in RD.visible_model_parameter_names(model, params)
         value = get(params, name, model.default_params[name])
         value isa Real || continue
         push!(
@@ -589,15 +594,24 @@ const LATEX_GREEK_LETTERS = Dict(zip(
 ))
 
 
+function latex_subscript(text::AbstractString)
+    # One character as it is, a longer subscript in braces; underscores in
+    # parameter names are escaped: 0 -> _0, split -> _{split},
+    # peak_pos -> _{peak\_pos}.
+    escaped = replace(String(text), "_" => raw"\_")
+    return length(text) == 1 ? "_" * escaped : "_{" * escaped * "}"
+end
+
+
 function latex_parameter_token(parameter::Symbol)
     # Greek-letter parameters appear as LaTeX commands in the equations,
     # whether the name uses the letter or spells it out: μu -> \mu_u,
-    # τ -> \tau, kappa -> \kappa.
+    # τ -> \tau, kappa -> \kappa, ρsplit -> \rho_{split}.
     name = String(parameter)
     letter = get(LATEX_GREEK_LETTERS, first(name), nothing)
     if letter !== nothing
         rest = name[nextind(name, 1):end]
-        return "\\" * letter * (isempty(rest) ? "" : "_" * rest)
+        return "\\" * letter * (isempty(rest) ? "" : latex_subscript(rest))
     end
     name in values(LATEX_GREEK_LETTERS) && return "\\" * name
     if startswith(name, "D") && length(name) == 2
@@ -649,6 +663,10 @@ function latex_number(value::Real)
 end
 
 
+regex_escape(text::AbstractString) =
+    replace(String(text), r"[\\^$.|?*+()\[\]{}]" => character -> "\\" * character)
+
+
 function equations_with_parameter_values(
     equations::AbstractVector{<:AbstractString},
     model::RD.ModelSpec,
@@ -660,7 +678,7 @@ function equations_with_parameter_values(
         value = get(params, parameter, model.default_params[parameter])
         value isa Real || continue
         # Never match right after a backslash, i.e. inside a LaTeX command.
-        pattern = Regex("(?<![A-Za-z\\\\])" * Base.escape_string(token) * "(?![A-Za-z])")
+        pattern = Regex("(?<![A-Za-z\\\\])" * regex_escape(token) * "(?![A-Za-z])")
         replacement = latex_number(value)
         rendered = replace.(rendered, pattern => replacement)
     end
@@ -768,6 +786,149 @@ function refresh_current_equation_image!(controller::QMLController)
 end
 
 
+# ============================================================
+# Formula of the active spatial profile set
+# ============================================================
+
+function formula_with_parameter_values(
+    formula,
+    model::RD.ModelSpec,
+    params::AbstractDict{Symbol},
+)
+    substitute(text) = only(equations_with_parameter_values([text], model, params))
+    formula isa RD.PiecewiseFormula || return substitute(formula)
+
+    return RD.PiecewiseFormula(
+        substitute(formula.lhs),
+        [substitute(first(piece)) => substitute(last(piece)) for piece in formula.pieces],
+    )
+end
+
+
+function svg_data_uri(figure)
+    rendered_width = Float64(figure.scene.viewport[].widths[1])
+    svg = sprint(show, MIME"image/svg+xml"(), figure)
+    return (
+        uri = "data:image/svg+xml;base64," * base64encode(svg),
+        width = rendered_width,
+    )
+end
+
+
+function render_piecewise_formula_svg_uri(formula::RD.PiecewiseFormula)
+    # lhs = { expression_1   condition_1
+    #         expression_2   condition_2
+    # MathTeXEngine has no cases environment, so the brace is a single
+    # glyph scaled to the height of the parts.
+    figure = CairoMakie.Figure(
+        figure_padding = (18, 18, 14, 14),
+        backgroundcolor = :transparent,
+    )
+    rows = length(formula.pieces)
+
+    latex_label(position, text; halign) = CairoMakie.Label(
+        position,
+        LaTeXStrings.latexstring(text);
+        fontsize = 24,
+        color = :black,
+        halign = halign,
+        tellwidth = true,
+        tellheight = true,
+    )
+
+    latex_label(figure[1:rows, 1], formula.lhs; halign = :right)
+    latex_label(figure[1:rows, 2], "="; halign = :center)
+    CairoMakie.Label(
+        figure[1:rows, 3],
+        LaTeXStrings.latexstring(raw"\{");
+        fontsize = 34 * rows + 10 * (rows - 1),
+        color = :black,
+        halign = :right,
+        valign = :center,
+        tellwidth = true,
+        tellheight = false,
+    )
+
+    for (row, (expression, condition)) in enumerate(formula.pieces)
+        latex_label(figure[row, 4], expression; halign = :left)
+        latex_label(figure[row, 5], condition; halign = :left)
+    end
+
+    colgap!(figure.layout, 10)
+    colgap!(figure.layout, 3, 4)
+    colgap!(figure.layout, 4, 28)
+    rowgap!(figure.layout, 10)
+    CairoMakie.resize_to_layout!(figure)
+
+    return svg_data_uri(figure)
+end
+
+
+function render_profile_formula_svg_uri(formula)
+    formula isa RD.PiecewiseFormula ||
+        return render_model_equations_svg_uri([formula])
+
+    try
+        return render_piecewise_formula_svg_uri(formula)
+    catch error
+        @warn "The profile formula could not be drawn with a brace; it is shown line by line." exception =
+            (error, catch_backtrace())
+        lines = [
+            (index == 1 ? formula.lhs * " = " : "") * expression * raw", \quad " * condition
+            for (index, (expression, condition)) in enumerate(formula.pieces)
+        ]
+        return render_model_equations_svg_uri([join(lines, "\n")])
+    end
+end
+
+
+const PROFILE_FORMULA_CACHE = Dict{String, NamedTuple{(:uri, :width), Tuple{String, Float64}}}()
+
+profile_formula_cache_key(formula::AbstractString) = "S\0" * formula
+profile_formula_cache_key(formula::RD.PiecewiseFormula) =
+    "P\0" * formula.lhs * "\0" *
+    join((first(piece) * "\0" * last(piece) for piece in formula.pieces), "\0")
+
+
+function refresh_profile_formula!(controller::QMLController)
+    bindings = controller.bindings
+    app = controller.app
+    formula, note = RD.active_spatial_profile_formula(app.sim.model, app.sim.params)
+    rendered = (uri = "", width = 0.0)
+
+    if formula !== nothing
+        if bindings.equation_values_visible[]
+            formula = formula_with_parameter_values(formula, app.sim.model, app.sim.params)
+        end
+
+        key = profile_formula_cache_key(formula)
+        cached = get(PROFILE_FORMULA_CACHE, key, nothing)
+
+        if cached === nothing
+            CairoMakie.activate!(type = "svg")
+            try
+                cached = render_profile_formula_svg_uri(formula)
+                length(PROFILE_FORMULA_CACHE) >= 200 && empty!(PROFILE_FORMULA_CACHE)
+                PROFILE_FORMULA_CACHE[key] = cached
+            catch error
+                @warn "The profile formula could not be rendered." exception =
+                    (error, catch_backtrace())
+            finally
+                GLMakie.activate!()
+            end
+        end
+
+        cached === nothing || (rendered = cached)
+    end
+
+    set_if_changed!(bindings.profile_formula_image, rendered.uri)
+    set_if_changed!(bindings.profile_formula_width, rendered.width)
+    set_if_changed!(bindings.profile_formula_note, note)
+
+    return nothing
+end
+
+
 function render_equation_catalog(
     registry::Dict{String, RD.ModelSpec};
     on_progress::Union{Nothing, Function} = nothing,
@@ -849,6 +1010,7 @@ function update_model_bindings!(controller::QMLController)
         bindings.equation_preferred_width,
         get(controller.equation_widths_by_model, active_key, 0.0),
     )
+    refresh_profile_formula!(controller)
 
     return nothing
 end
@@ -2598,6 +2760,7 @@ function set_equation_values_visible!(controller::QMLController, visible)
     return guarded_action(controller, "Equation display change failed") do
         controller.bindings.equation_values_visible[] = Bool(visible)
         refresh_current_equation_image!(controller)
+        refresh_profile_formula!(controller)
     end
 end
 
@@ -3147,6 +3310,9 @@ function qml_property_map(
         "equationPreferredWidth" => bindings.equation_preferred_width,
         "modelDescription" => bindings.model_description,
         "modelParametersJson" => bindings.model_parameters_json,
+        "profileFormulaImage" => bindings.profile_formula_image,
+        "profileFormulaWidth" => bindings.profile_formula_width,
+        "profileFormulaNote" => bindings.profile_formula_note,
         "equationValuesVisible" => bindings.equation_values_visible,
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
@@ -3275,6 +3441,7 @@ function create_qml_controller(;
         Ref{Union{Nothing, RD.SavedSimulationState}}(nothing),
         Threads.Atomic{Bool}(true),
         Dict{Symbol, Float64}(),
+        Observable(0),
     )
     app.plot_panel = RD.build_plot_panel!(plot_grid, app; title_obs = title)
     report_startup_stage("Create application and plots", stage_started_ns)
@@ -3328,6 +3495,9 @@ function create_qml_controller(;
         Observable(16),
         Observable(false),
         Observable(""),
+        Observable(""),
+        Observable(0.0),
+        Observable(""),
     )
     controller = QMLController(
         app,
@@ -3355,6 +3525,15 @@ function create_qml_controller(;
     )
     controller.series.selected_position = 0.5
     refresh_series_bindings!(controller)
+    refresh_profile_formula!(controller)
+    # The Previous / Next buttons under the profile plots change the active
+    # profile set outside QML; its parameters and formula follow here.
+    on(app.spatial_profile_set_revision) do _
+        guarded_action(controller, "Profile set change failed") do
+            update_model_bindings!(controller)
+            refresh_current_equation_image!(controller)
+        end
+    end
     report_startup_stage("Create QML controller", stage_started_ns)
 
     return controller, figure

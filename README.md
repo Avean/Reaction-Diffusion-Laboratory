@@ -93,13 +93,53 @@ RDModel(
 ```
 
 Create `Models/<Family>/<my_model>/model.jl` and restart the application; the
-model appears in the model menu. The domain length L is available inside the model as
-`p.domain_length`, e.g. for an interaction kernel with a fixed physical range
-(see the normalized kernel models); `domain_length` is therefore not allowed
-as a parameter name. Spatial profiles (e.g. a source density
-`ρ(x)`) can be declared with `spatial_profiles`; see the existing models.
-When a model declares several profile sets, the active one is chosen with
-the Previous / Next buttons under the profile plots.
+model appears in the model menu. The domain length L is available inside the
+model as `p.domain_length`, e.g. for an interaction kernel with a fixed
+physical range (see the normalized kernel models); `domain_length` is
+therefore not allowed as a parameter name.
+
+### Spatial profiles
+
+Spatial profiles (e.g. a source density `ρ(x)`) are declared with
+`spatial_profiles`, grouped in profile sets; the active set is chosen with the
+Previous / Next buttons under the profile plots. A profile is a function of
+the grid `x`, which always runs from 0 to 1 whatever the domain length, and of
+the parameters `p`; with a third argument `rng` it is drawn anew in every
+Series realization. Besides its profiles a set can carry a `formula`, shown
+under Model parameters (with the current values when the equations show
+them), and a short `note`:
+
+```julia
+spatial_profiles = (
+    FootHead = (
+        ρ = (x, p) -> [p.ρ0 + p.ρ1 * xi for xi in x],
+        formula = raw"\rho(x) = \rho_0 + \rho_1 x",
+    ),
+    HeadFoot = (
+        ρ = (x, p) -> @. ifelse(
+            x < p.ρsplit,
+            p.ρ0 + p.ρ1 * (x + 1 - p.ρsplit),
+            p.ρ0 + p.ρ1 * (x - p.ρsplit),
+        ),
+        formula = piecewise(raw"\rho(x)",
+            raw"\rho_0 + \rho_1 (x + 1 - \rho_{split})" => raw"x < \rho_{split}",
+            raw"\rho_0 + \rho_1 (x - \rho_{split})" => raw"x \geq \rho_{split}",
+        ),
+    ),
+),
+```
+
+`piecewise` draws the parts with a curly brace. In formulas a parameter is
+written the way the application substitutes its value: a Greek first letter
+becomes its command and the rest a subscript, in braces when it is longer than
+one character (`ρ0` → `\rho_0`, `ρsplit` → `\rho_{split}`, `ρpeak_pos` →
+`\rho_{peak\_pos}`). The LaTeX engine (MathTeXEngine) has no environments
+such as `cases`.
+
+The parameter fields show only the parameters the active set uses, besides
+those of the reaction, the initial condition and the diffusion. They are found
+by evaluating every set once at startup; a set can also list them itself with
+`parameters = (:ρ0, :ρ1)`.
 
 ## Installation
 

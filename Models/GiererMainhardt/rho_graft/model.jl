@@ -51,8 +51,8 @@ RDModel(
         pu = 0.0,
         pv = 0.0,
 
-        # Linear profile: ρ(x) = ρ0 - ρ1 / 2 + ρ1 x
-        ρ0 = 1.0,
+        # Linear profile: ρ(x) = ρ0 + ρ1 x
+        ρ0 = 0.75,
         ρ1 = 0.5,
 
         # Gauss profile: ρ(x) = ρa + ρb exp(-ρc x²), decreasing towards ρa
@@ -92,11 +92,21 @@ RDModel(
 
     spatial_profiles = (
         Linear = (
-            ρ = (x, p) -> rho_graft_with_peak(@.(p.ρ0 - p.ρ1 / 2 + p.ρ1 * x), x, p),
+            ρ = (x, p) -> rho_graft_with_peak(@.(p.ρ0 + p.ρ1 * x), x, p),
+            formula = piecewise(raw"\rho(x)",
+                raw"\rho_0 + \rho_1 x + \rho_{peak\_height}" =>
+                    raw"|x - \rho_{peak\_pos}| \leq \rho_{peak\_width} / 2",
+                raw"\rho_0 + \rho_1 x" => raw"\text{otherwise}",
+            ),
         ),
 
         Gauss = (
             ρ = (x, p) -> rho_graft_with_peak(@.(p.ρa + p.ρb * exp(-p.ρc * x^2)), x, p),
+            formula = piecewise(raw"\rho(x)",
+                raw"\rho_a + \rho_b e^{-\rho_c x^2} + \rho_{peak\_height}" =>
+                    raw"|x - \rho_{peak\_pos}| \leq \rho_{peak\_width} / 2",
+                raw"\rho_a + \rho_b e^{-\rho_c x^2}" => raw"\text{otherwise}",
+            ),
         ),
     ),
 
