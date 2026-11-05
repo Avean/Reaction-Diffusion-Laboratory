@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/source_head_linear/model.jl
+# Models/GiererMeinhardt/source_head_linear/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system

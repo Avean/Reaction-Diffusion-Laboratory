@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/rho_independent/model.jl
+# Models/GiererMeinhardt/rho_independent/model.jl
 
 # ============================================================
 # Gierer-Meinhardt system with a source density rho(x) glued from two

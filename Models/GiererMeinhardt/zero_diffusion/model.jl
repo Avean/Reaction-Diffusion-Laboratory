@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/oscillations/model.jl
+# Models/GiererMeinhardt/zero_diffusion/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system
@@ -6,7 +6,7 @@
 #
 # Model:
 #
-#     u_t = Du u_xx  - b u + u^2 / (v+1) + f(t) u
+#     u_t = Du u_xx  - b u + u^2 / (v+1)
 #     v_t = Dv v_xx + u^2 - v
 #
 # Here:
@@ -18,21 +18,17 @@
 #
 # ============================================================
 
-function Teeth(t,τ, Treshold)
-    return mod(t/τ, 1.0) * Treshold
-end
-
 RDModel(
     id = :gierer_meinhardt,
 
-    display_name = "Oscillations",
-    description = "A time-dependent toy Gierer-Meinhardt variant configured for oscillatory behaviour. It shows how patterns can be shaped without starting from Turing instability",
+    display_name = "Base Kinetics",
+    description = "Gierer-Meinhardt kinetics with the diffusion-free variant used as a reaction baseline. Spatial patterning then depends on the remaining configured transport terms.",
 
     variables = (:u, :v),
 
     parameters = (
-        Du = 1e-2,
-        Dv = 1e0,
+        Du = 0.0,
+        Dv = 0.0,
 
         a = 1.5,
         b = 2.0,
@@ -42,9 +38,6 @@ RDModel(
 
         pu = 0.0,
         pv = 0.0,
-
-        Treshold = 1.3,
-        τ = 10.0,
     ),
 
     initial = function (U, x, p)
@@ -60,7 +53,7 @@ RDModel(
     end,
 
     reaction = function (F, U, x, p, t)
-        @. F.u = p.a * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu + Teeth(t, p.τ, p.Treshold) * U.u / (U.v + 1.0)
+        @. F.u = p.a * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu 
         @. F.v = p.b * U.u^2 - p.μv * U.v + p.pv
 
         return nothing
@@ -72,8 +65,8 @@ RDModel(
     ),
 
     latex_equations = (
-    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v + 1} - \mu_u u + f(t) \frac{u}{v + 1}",
-    raw"\partial_t v = D_v \partial_{xx} v + b u^2 - \mu_v v",
+    raw"\partial_t u =  a \frac{u^2}{v + 1} - \mu_u u",
+    raw"\partial_t v =  b u^2 - \mu_v v",
     ),
 
 )

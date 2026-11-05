@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/basic/model.jl
+# Models/GiererMeinhardt/oscillations/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system
@@ -6,7 +6,7 @@
 #
 # Model:
 #
-#     u_t = Du u_xx  - b u + u^2 / (v+1)
+#     u_t = Du u_xx  - b u + u^2 / (v+1) + f(t) u
 #     v_t = Dv v_xx + u^2 - v
 #
 # Here:
@@ -18,11 +18,15 @@
 #
 # ============================================================
 
+function Teeth(t,τ, Treshold)
+    return mod(t/τ, 1.0) * Treshold
+end
+
 RDModel(
     id = :gierer_meinhardt,
 
-    display_name = "Basic",
-    description = "Basic Gierer-Meinhardt model with constant production of inhibitor and three steady states (added K in denominator). Produces patterns only for large perturbations",
+    display_name = "Oscillations",
+    description = "A time-dependent toy Gierer-Meinhardt variant configured for oscillatory behaviour. It shows how patterns can be shaped without starting from Turing instability",
 
     variables = (:u, :v),
 
@@ -38,6 +42,9 @@ RDModel(
 
         pu = 0.0,
         pv = 0.0,
+
+        Treshold = 1.3,
+        τ = 10.0,
     ),
 
     initial = function (U, x, p)
@@ -53,7 +60,7 @@ RDModel(
     end,
 
     reaction = function (F, U, x, p, t)
-        @. F.u = p.a * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu 
+        @. F.u = p.a * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu + Teeth(t, p.τ, p.Treshold) * U.u / (U.v + 1.0)
         @. F.v = p.b * U.u^2 - p.μv * U.v + p.pv
 
         return nothing
@@ -65,7 +72,7 @@ RDModel(
     ),
 
     latex_equations = (
-    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v + 1} - \mu_u u",
+    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v + 1} - \mu_u u + f(t) \frac{u}{v + 1}",
     raw"\partial_t v = D_v \partial_{xx} v + b u^2 - \mu_v v",
     ),
 

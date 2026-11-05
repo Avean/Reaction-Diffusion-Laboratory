@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/no_k/model.jl
+# Models/GiererMeinhardt/basic/model.jl
 
 # ============================================================
 # Classical Gierer-Meinhardt reaction-diffusion system
@@ -21,8 +21,8 @@
 RDModel(
     id = :gierer_meinhardt,
 
-    display_name = "Basic no K",
-    description = "Original Gierer-Meinhardt model withoud production of inhibitor. Only one steady state. Produces patterns for all initial conditions.",
+    display_name = "Basic",
+    description = "Basic Gierer-Meinhardt model with constant production of inhibitor and three steady states (added K in denominator). Produces patterns only for large perturbations",
 
     variables = (:u, :v),
 
@@ -43,8 +43,8 @@ RDModel(
     initial = function (U, x, p)
         # Random.seed!(6)
 
-        u0 = 1.5
-        v0 = 4.5
+        u0 = 1.0
+        v0 = 2.0
 
         U.u .= u0 .+ 0.01 .* randn(length(x))
         U.v .= v0 .+ 0.01 .* randn(length(x))
@@ -53,7 +53,7 @@ RDModel(
     end,
 
     reaction = function (F, U, x, p, t)
-        @. F.u = p.a * U.u^2 / (U.v) - p.μu * U.u + p.pu 
+        @. F.u = p.a * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu 
         @. F.v = p.b * U.u^2 - p.μv * U.v + p.pv
 
         return nothing
@@ -65,7 +65,7 @@ RDModel(
     ),
 
     latex_equations = (
-    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v} - \mu_u u",
+    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v + 1} - \mu_u u",
     raw"\partial_t v = D_v \partial_{xx} v + b u^2 - \mu_v v",
     ),
 

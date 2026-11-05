@@ -1,13 +1,13 @@
-# Models/GiererMainhardt/degradation/model.jl
+# Models/GiererMeinhardt/no_k/model.jl
 
 # ============================================================
-# Classical Gierer-Meinhardt reaction-diffusion system with degradation
+# Classical Gierer-Meinhardt reaction-diffusion system
 # ============================================================
 #
 # Model:
 #
-#     u_t = Du u_xx + a - b u + u^2 - uv + ρ_a
-#     v_t = Dv v_xx + u^2 - v + ρ_v
+#     u_t = Du u_xx  - b u + u^2 / (v+1)
+#     v_t = Dv v_xx + u^2 - v
 #
 # Here:
 #
@@ -21,20 +21,20 @@
 RDModel(
     id = :gierer_meinhardt,
 
-    display_name = "Degradation",
-    description = "A Gierer-Meinhardt variant with degradation terms. It is useful for testing how removal rates reshape activator-inhibitor patterns.",
+    display_name = "Basic no K",
+    description = "Original Gierer-Meinhardt model withoud production of inhibitor. Only one steady state. Produces patterns for all initial conditions.",
 
     variables = (:u, :v),
 
     parameters = (
         Du = 1e-2,
-        Dv = 1e2,
+        Dv = 1e0,
 
-        a = 0.75,
-        b = 0.5,
+        a = 1.5,
+        b = 2.0,
 
         μu = 0.5,
-        μv = 2.0,
+        μv = 1.0,
 
         pu = 0.0,
         pv = 0.0,
@@ -43,8 +43,8 @@ RDModel(
     initial = function (U, x, p)
         # Random.seed!(6)
 
-        u0 = 2.0
-        v0 = 1.0
+        u0 = 1.5
+        v0 = 4.5
 
         U.u .= u0 .+ 0.01 .* randn(length(x))
         U.v .= v0 .+ 0.01 .* randn(length(x))
@@ -53,7 +53,7 @@ RDModel(
     end,
 
     reaction = function (F, U, x, p, t)
-        @. F.u = p.a * U.u^2 - U.u * U.v - p.μu * U.u + p.pu 
+        @. F.u = p.a * U.u^2 / (U.v) - p.μu * U.u + p.pu 
         @. F.v = p.b * U.u^2 - p.μv * U.v + p.pv
 
         return nothing
@@ -65,8 +65,8 @@ RDModel(
     ),
 
     latex_equations = (
-    raw"\partial_t u = D_u \partial_{xx} u + a u^2 - uv - \mu_u u ",
-    raw"\partial_t v = D_v \partial_{xx} v + b u^2 - \mu_v v ",
+    raw"\partial_t u = D_u \partial_{xx} u + a \frac{u^2}{v} - \mu_u u",
+    raw"\partial_t v = D_v \partial_{xx} v + b u^2 - \mu_v v",
     ),
 
 )

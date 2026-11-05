@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/rho/model.jl
+# Models/GiererMeinhardt/rho/model.jl
 
 # ============================================================
 # Gierer-Meinhardt system with a source density rho(x)

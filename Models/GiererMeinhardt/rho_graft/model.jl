@@ -1,4 +1,4 @@
-# Models/GiererMainhardt/rho_graft/model.jl
+# Models/GiererMeinhardt/rho_graft/model.jl
 
 # ============================================================
 # Gierer-Meinhardt system with a source density rho(x) and a graft
