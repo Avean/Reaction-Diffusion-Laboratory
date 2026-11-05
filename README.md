@@ -39,7 +39,7 @@ automatically at startup. The repository ships with:
 
 | Family | Models |
 |---|---|
-| Gierer–Meinhardt | basic, degradation, no K, oscillations, ρ profile, source, source head, linear source head, zero diffusion |
+| Gierer–Meinhardt | basic, degradation, no K, oscillations, ρ profile, ρ profile independent, ρ graft, source, source head, linear source head, zero diffusion |
 | Mechanochemical | global integral, squared global integral, local kernel, normalized kernel, normalized ring kernel, oscillating ramp |
 | Stem cells | quiescent / active stem-cell populations |
 
