@@ -10,6 +10,36 @@ import jlqml
 Window {
     id: seriesWindow
 
+    // A complete light palette. Roles left unset come from the desktop: on a
+    // Linux desktop in dark mode the Basic style then draws black fields with
+    // white text and white list items on the light popups.
+    palette {
+        window: "#eef1f5"
+        windowText: "#20252d"
+        base: "#ffffff"
+        alternateBase: "#f3f5f8"
+        text: "#20252d"
+        placeholderText: "#8a939e"
+        button: "#f5f7fa"
+        buttonText: "#20252d"
+        brightText: "#ffffff"
+        // The Basic style draws the highlighted row of lists and menus in
+        // light, with highlightedText on top.
+        light: "#3b82f6"
+        midlight: "#e3e7ec"
+        mid: "#b8c0ca"
+        dark: "#7f8a96"
+        shadow: "#5f6874"
+        highlight: "#3b82f6"
+        highlightedText: "#ffffff"
+        link: "#2563eb"
+        linkVisited: "#7c3aed"
+        toolTipBase: "#20252d"
+        toolTipText: "#ffffff"
+        disabled.text: "#8a939e"
+        disabled.buttonText: "#8a939e"
+    }
+
     property var variables: JSON.parse(ui.variablesJson)
     property var perturbations: JSON.parse(ui.seriesPerturbationsJson)
     property var presets: JSON.parse(ui.seriesPresetsJson)
@@ -543,6 +573,11 @@ Window {
 
                                             Label { text: "Width min (0–1)" }
                                             TextField {
+                                                // Share the card width; the default width
+                                                // of the Basic style would overflow it.
+                                                Layout.fillWidth: true
+                                                Layout.preferredWidth: 60
+                                                Layout.minimumWidth: 44
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
                                                 validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -551,6 +586,11 @@ Window {
                                             }
                                             Label { text: "Width max (0–1)" }
                                             TextField {
+                                                // Share the card width; the default width
+                                                // of the Basic style would overflow it.
+                                                Layout.fillWidth: true
+                                                Layout.preferredWidth: 60
+                                                Layout.minimumWidth: 44
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
                                                 validator: DoubleValidator { bottom: 0; top: 1; notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -560,6 +600,11 @@ Window {
 
                                             Label { text: "Height min" }
                                             TextField {
+                                                // Share the card width; the default width
+                                                // of the Basic style would overflow it.
+                                                Layout.fillWidth: true
+                                                Layout.preferredWidth: 60
+                                                Layout.minimumWidth: 44
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
                                                 validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }
@@ -568,6 +613,11 @@ Window {
                                             }
                                             Label { text: "Height max" }
                                             TextField {
+                                                // Share the card width; the default width
+                                                // of the Basic style would overflow it.
+                                                Layout.fillWidth: true
+                                                Layout.preferredWidth: 60
+                                                Layout.minimumWidth: 44
                                                 selectByMouse: true
                                                 enabled: !ui.seriesRunning
                                                 validator: DoubleValidator { notation: DoubleValidator.ScientificNotation; locale: "C" }

@@ -24,6 +24,36 @@ ApplicationWindow {
         color: "#f3f5f8"
     }
 
+    // A complete light palette. Roles left unset come from the desktop: on a
+    // Linux desktop in dark mode the Basic style then draws black fields with
+    // white text and white list items on the light popups.
+    palette {
+        window: "#f3f5f8"
+        windowText: "#20252d"
+        base: "#ffffff"
+        alternateBase: "#f3f5f8"
+        text: "#20252d"
+        placeholderText: "#8a939e"
+        button: "#f5f7fa"
+        buttonText: "#20252d"
+        brightText: "#ffffff"
+        // The Basic style draws the highlighted row of lists and menus in
+        // light, with highlightedText on top.
+        light: "#3b82f6"
+        midlight: "#e3e7ec"
+        mid: "#b8c0ca"
+        dark: "#7f8a96"
+        shadow: "#5f6874"
+        highlight: "#3b82f6"
+        highlightedText: "#ffffff"
+        link: "#2563eb"
+        linkVisited: "#7c3aed"
+        toolTipBase: "#20252d"
+        toolTipText: "#ffffff"
+        disabled.text: "#8a939e"
+        disabled.buttonText: "#8a939e"
+    }
+
     // Closing the window cancels the startup, like the Cancel button.
     onClosing: Julia.cancelStartup()
 
