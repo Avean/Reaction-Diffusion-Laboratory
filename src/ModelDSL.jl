@@ -13,12 +13,28 @@
 #     - parameters p.a, p.Du, ...
 #     - spatial profiles p.ρ, p.source, ...
 #     - active spatial profile sets switchable from the UI
+#     - the domain length p.domain_length
 #
 # ============================================================
 
 
 const ACTIVE_SPATIAL_PROFILE_SET_PARAM = :__active_spatial_profile_set_index
 const SPATIAL_PROFILE_OVERRIDE_PREFIX = "__spatial_profile_override__"
+
+# Squared domain length L^2, set by the domain slider. Every model is solved
+# on the unit interval, so a domain of length L acts through the diffusion
+# coefficients as D / L^2. The parameters themselves always keep the values
+# given by the model or typed by the user; only the right-hand side divides.
+const DIFFUSION_SCALE_PARAM = :__diffusion_scale
+
+# The domain length L as models read it, e.g. a kernel with a fixed physical
+# range: p.domain_length. It is not a model parameter and cannot be edited.
+const DOMAIN_LENGTH_FIELD = :domain_length
+
+
+function diffusion_scale(p_dict::AbstractDict{Symbol})
+    return Float64(get(p_dict, DIFFUSION_SCALE_PARAM, 1.0))
+end
 
 
 function spatial_profile_override_key(profile_name::AbstractString)
@@ -386,7 +402,10 @@ function _make_named_parameters_with_active_spatial_profiles(
     spatial_profile_sets,
     x::AbstractVector,
 )
-    p_base = _make_named_parameters(p_dict, param_names)
+    p_base = merge(
+        _make_named_parameters(p_dict, param_names),
+        NamedTuple{(DOMAIN_LENGTH_FIELD,)}((sqrt(diffusion_scale(p_dict)),)),
+    )
 
     isempty(spatial_profile_sets) &&
         return p_base
@@ -404,7 +423,7 @@ function _make_named_parameters_with_active_spatial_profiles(
     for (profile_name, profile_fun) in profiles
         profile_symbol = Symbol(profile_name)
 
-        profile_symbol in param_names &&
+        (profile_symbol in param_names || profile_symbol == DOMAIN_LENGTH_FIELD) &&
             error("Spatial profile $(profile_name) conflicts with an existing parameter name.")
 
         push!(profile_symbols, profile_symbol)
@@ -477,6 +496,9 @@ function RDModel(;
     default_params = _make_parameter_dict(parameters)
     param_names = collect(Symbol.(propertynames(parameters)))
 
+    DOMAIN_LENGTH_FIELD in param_names &&
+        error("Parameter name $(DOMAIN_LENGTH_FIELD) is reserved: models read the domain length as p.$(DOMAIN_LENGTH_FIELD).")
+
     diffusion = _normalize_diffusion(diffusion)
     _validate_diffusion(diffusion, vars, param_names)
 
@@ -543,9 +565,13 @@ function RDModel(;
 
         tmp = similar(view(Umat, :, 1))
 
+        # The model is solved on the unit interval: on a domain of length L
+        # every diffusion coefficient acts as D / L^2.
+        scale = diffusion_scale(p_dict)
+
         for var in vars
             j = var_index[var]
-            D = _diffusion_coefficient(diffusion, var, p)
+            D = _diffusion_coefficient(diffusion, var, p) / scale
 
             if D != 0.0
                 u = view(Umat, :, j)

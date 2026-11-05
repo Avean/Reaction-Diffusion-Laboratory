@@ -436,12 +436,7 @@ function set_model_parameter_app!(
     parameter in public_model_parameter_names(app.sim.model) ||
         error("Unknown model parameter: $parameter")
 
-    # Diffusion parameters are remembered at domain scale 1; see
-    # AppState.parameter_overrides.
-    app.parameter_overrides[parameter] =
-        parameter in diffusion_parameter_names(app.sim.model) ?
-        value_float * app.plot_panel.domain_length_scale^2 :
-        value_float
+    app.parameter_overrides[parameter] = value_float
 
     with_worker_paused!(
         app,
@@ -532,11 +527,7 @@ function reset_initial_condition_app!(
             dtmax = current_dtmax(app.sim),
             parameters = app.parameter_overrides,
         )
-        set_diffusion_scale!(
-            app.sim,
-            domain_length_scale^2;
-            parameter_overrides = app.parameter_overrides,
-        )
+        set_diffusion_scale!(app.sim, domain_length_scale^2)
         app.simulations = SimulationState[app.sim]
         app.segment_runtimes = SegmentRuntime[empty_segment_runtime()]
 
@@ -1163,56 +1154,16 @@ end
 # Diffusion rescaling
 # ============================================================
 
-function diffusion_parameter_names(model::ModelSpec)
-    names = Symbol[]
-
-    # Preferred convention:
-    #
-    #     variable u -> Du
-    #     variable v -> Dv
-    #     variable w -> Dw
-    #
-    for varname in model.varnames
-        key = Symbol("D", varname)
-
-        if haskey(model.default_params, key)
-            push!(names, key)
-        end
-    end
-
-    # Fallback: all parameters whose name starts with D.
-    if isempty(names)
-        for key in keys(model.default_params)
-            if startswith(String(key), "D")
-                push!(names, key)
-            end
-        end
-    end
-
-    return sort(unique(names); by = String)
-end
-
-
-function set_diffusion_scale!(
-    sim::SimulationState,
-    scale::Real;
-    parameter_overrides::AbstractDict{Symbol} = Dict{Symbol, Float64}(),
-)
+function set_diffusion_scale!(sim::SimulationState, scale::Real)
+    # The domain slider sets the squared domain length L^2. The model keeps
+    # its parameters; the right-hand side divides every diffusion coefficient
+    # by L^2 (see DIFFUSION_SCALE_PARAM in ModelDSL.jl).
     scale_float = Float64(scale)
 
     isfinite(scale_float) || error("Diffusion scale must be finite.")
     scale_float > 0.0 || error("Diffusion scale must be positive.")
 
-    names = diffusion_parameter_names(sim.model)
-
-    for name in names
-        base_value = get(parameter_overrides, name, sim.model.default_params[name])
-        sim.params[name] = base_value / scale_float
-    end
-
-    if haskey(sim.params, :domain_scale)
-        sim.params[:domain_scale] = sqrt(scale_float)
-    end
+    sim.params[DIFFUSION_SCALE_PARAM] = scale_float
 
     # Restart the integrator from the current solution, with changed parameters.
     ynew = copy(sim.integrator_ref[].u)
@@ -1236,11 +1187,7 @@ function set_diffusion_scale_app!(
         app,
         () -> begin
             for sim in app.simulations
-                set_diffusion_scale!(
-                    sim,
-                    scale;
-                    parameter_overrides = app.parameter_overrides,
-                )
+                set_diffusion_scale!(sim, scale)
             end
             set_plot_domain_scale!(app.plot_panel, app, scale)
         end;

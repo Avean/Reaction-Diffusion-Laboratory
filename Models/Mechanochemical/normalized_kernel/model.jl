@@ -18,7 +18,8 @@
 #     K(d) = 1 + 4d  for d <= 1/4,
 #     K(d) = 0       for d > 1/4.
 #
-# The physical cutoff 1/4 remains fixed when the domain is rescaled.
+# The physical cutoff 1/4 remains fixed when the domain is rescaled: the
+# domain length L comes from the domain slider as p.domain_length.
 # ============================================================
 
 RDModel(
@@ -32,7 +33,6 @@ RDModel(
     parameters = (
         Du = 1e-4,
         kappa = 1.0,
-        domain_scale = 1.0,
     ),
 
     default_boundary_condition = :periodic,
@@ -44,7 +44,7 @@ RDModel(
 
     reaction = function (F, U, x, p, t)
         base_dx = x[2] - x[1]
-        physical_dx = p.domain_scale * base_dx
+        physical_dx = p.domain_length * base_dx
         physical_cutoff = 1.0 / 4.0
         base_period = 1.0
         tolerance = 16.0 * eps(Float64)
@@ -69,7 +69,7 @@ RDModel(
                     wrapped_distance,
                     base_period - wrapped_distance,
                 )
-                physical_distance = p.domain_scale * base_torus_distance
+                physical_distance = p.domain_length * base_torus_distance
 
                 if physical_distance <= physical_cutoff + tolerance
                     kernel_value = 1.0 + 4.0 * physical_distance

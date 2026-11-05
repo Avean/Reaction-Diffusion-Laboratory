@@ -308,7 +308,7 @@ mutable struct AppState
 
     parameter_overrides::Dict{Symbol, Float64}
     # Parameter values set by the user for the current model, kept by Reset
-    # and boundary-condition changes and cleared by a model change. Diffusion
-    # parameters are stored unscaled (domain scale 1), so that a value set at
-    # any domain scale keeps its meaning when the scale changes.
+    # and boundary-condition changes and cleared by a model change. They are
+    # the model's own values: the domain length never changes a parameter,
+    # it only rescales diffusion inside the right-hand side.
 end

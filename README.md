@@ -14,6 +14,10 @@ the mouse, split the domain into independent panels, and run statistical
 - **Live parameters** – every model parameter can be edited while the
   simulation runs; the equations are shown in LaTeX, optionally with the
   current values substituted.
+- **Domain length** – the domain slider sets the length L of the domain.
+  Every model is solved on the unit interval, so L acts only through the
+  diffusion coefficients, as D/L²; the parameter fields always show the
+  model's own values.
 - **Interactive perturbations** – add local or random bumps to any variable
   directly on the plots.
 - **Domain partitioning** – split the domain into panels, merge, swap or
@@ -89,7 +93,10 @@ RDModel(
 ```
 
 Create `Models/<Family>/<my_model>/model.jl` and restart the application; the
-model appears in the model menu. Spatial profiles (e.g. a source density
+model appears in the model menu. The domain length L is available inside the model as
+`p.domain_length`, e.g. for an interaction kernel with a fixed physical range
+(see the normalized kernel models); `domain_length` is therefore not allowed
+as a parameter name. Spatial profiles (e.g. a source density
 `ρ(x)`) can be declared with `spatial_profiles`; see the existing models.
 When a model declares several profile sets, the active one is chosen with
 the Previous / Next buttons under the profile plots.

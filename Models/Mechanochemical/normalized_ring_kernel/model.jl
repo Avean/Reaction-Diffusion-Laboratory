@@ -22,7 +22,8 @@
 #
 #     u_t = D u_xx - u + kappa exp(u(x)) A(x) / Z.
 #
-# Both ring radii are physical and remain fixed when the domain is rescaled.
+# Both ring radii are physical and remain fixed when the domain is rescaled:
+# the domain length L comes from the domain slider as p.domain_length.
 # ============================================================
 
 RDModel(
@@ -36,7 +37,6 @@ RDModel(
     parameters = (
         Du = 1e-3,
         kappa = 1.0,
-        domain_scale = 1.0,
     ),
 
     default_boundary_condition = :periodic,
@@ -48,7 +48,7 @@ RDModel(
 
     reaction = function (F, U, x, p, t)
         base_dx = x[2] - x[1]
-        physical_dx = p.domain_scale * base_dx
+        physical_dx = p.domain_length * base_dx
         inner_radius = 1.0 / 4.0
         outer_radius = 1.0 / 2.0 - eps(Float64)
         base_period = 1.0
@@ -75,7 +75,7 @@ RDModel(
                     wrapped_distance,
                     base_period - wrapped_distance,
                 )
-                physical_distance = p.domain_scale * base_torus_distance
+                physical_distance = p.domain_length * base_torus_distance
                 in_ring =
                     physical_distance + tolerance >= inner_radius &&
                     physical_distance <= outer_radius
