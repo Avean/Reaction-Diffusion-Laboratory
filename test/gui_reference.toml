@@ -1,0 +1,16 @@
+# Counts of series saved by the application, which test/gui_reproduction.jl
+# must reproduce exactly. Put each Save graph folder in saved_graphs/ (or list
+# it in RDLAB_SAVED_GRAPHS) and write its folder name below.
+#
+# configurations: the counts of the head configurations of the series window,
+# compared without regard to their order.
+
+[[series]]
+experiment = "E4a without SD"
+folder = ""
+configurations = [25, 21, 46, 8]
+
+[[series]]
+experiment = "E3 without SD"
+folder = ""
+configurations = [92, 8]

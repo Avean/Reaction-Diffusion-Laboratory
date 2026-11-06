@@ -6,7 +6,9 @@
 #
 # This file is deliberately independent from QML.  The QML layer owns the
 # controls and threads, while this file owns reproducible perturbations,
-# stationary-state checks and one realization of a series.
+# stationary-state checks and one realization of a series. It is part of the
+# headless core (RDLabCore.jl), which the scripting API (RDLabAPI.jl) uses to
+# run the same realizations as the application.
 
 # Separates the random stream of spatial profiles from the perturbation
 # stream of the same realization.
@@ -378,7 +380,11 @@ function run_series_realization!(
     on_snapshot::Function = (_, _) -> nothing,
     on_residual::Function = (_, _) -> nothing,
     on_profiles::Function = _ -> nothing,
+    redraw_profiles::Bool = true,
 )
+    # redraw_profiles = false keeps the profiles the panels carry, as given
+    # by a script that set them itself (RDLabAPI); the application always
+    # redraws them.
     isempty(templates) && error("A series realization needs at least one panel.")
     validate_series_settings(settings, first(templates).model.nvars)
     run_rng = Xoshiro(settings.seed + UInt64(run_index - 1))
@@ -387,7 +393,8 @@ function run_series_realization!(
     # every realization. They use their own generator, so the perturbation
     # draws of a given seed stay the same as without random profiles.
     profile_rng = Xoshiro(settings.seed + UInt64(run_index - 1) + SERIES_PROFILE_SEED_OFFSET)
-    if !randomize_partition_spatial_profiles!(simulations, profile_rng) &&
+    if redraw_profiles &&
+       !randomize_partition_spatial_profiles!(simulations, profile_rng) &&
        !isempty(first(simulations).model.spatial_profile_sets)
         @warn "Spatial profiles are not redrawn in this series: the panels were swapped or deleted, so they keep the profile pieces they carry." maxlog = 1
     end

@@ -152,3 +152,50 @@ function laplacian_1d(
         return periodic_laplacian_1d(N, dx)
     end
 end
+
+
+# ============================================================
+# Grid helpers shared by perturbations and series
+# ============================================================
+
+function local_perturbation_mask(
+    x::AbstractVector{<:Real},
+    center::Real,
+    width::Real;
+    boundary_condition::Symbol,
+)
+    width > 0 ||
+        return falses(length(x))
+
+    half_width = width / 2
+
+    if boundary_condition == :periodic
+        period = (last(x) - first(x)) + (x[2] - x[1])
+
+        return [min(abs(xi - center), period - abs(xi - center)) <= half_width for xi in x]
+    else
+        return [abs(xi - center) <= half_width for xi in x]
+    end
+end
+
+
+function nearest_grid_index(
+    x::AbstractVector{<:Real},
+    value::Real,
+)
+    index = searchsortedfirst(x, value)
+
+    if index <= 1
+        return 1
+    elseif index > length(x)
+        return length(x)
+    end
+
+    left_index = index - 1
+
+    if abs(x[index] - value) < abs(value - x[left_index])
+        return index
+    else
+        return left_index
+    end
+end

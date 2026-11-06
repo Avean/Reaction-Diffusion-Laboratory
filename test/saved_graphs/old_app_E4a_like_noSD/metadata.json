@@ -1,0 +1,13 @@
+{
+  "model":"Gierer Mainhardt / Rho profile",
+  "saved":"2026-11-06 13:30:58",
+  "mode":"series",
+  "boundary":"Neumann",
+  "time":0,
+  "steps":0,
+  "variables":["u","v"],
+  "spatial_profiles":["ρ"],
+  "panels":[{"panel":1,"length":1.1905772393787835,"status":"t=0.00e+00  steps=0\ndt=1.0e-08\nR(last)=9.75e-19","not_converged":0}],
+  "head_variable":"u",
+  "completed_runs":24
+}

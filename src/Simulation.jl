@@ -428,3 +428,30 @@ function create_simulation_state_from_data(
         Ref(0),
     )
 end
+
+
+# ============================================================
+# Domain length
+# ============================================================
+
+function set_diffusion_scale!(sim::SimulationState, scale::Real)
+    # The domain slider sets the squared domain length L^2. The model keeps
+    # its parameters; the right-hand side divides every diffusion coefficient
+    # by L^2 (see DIFFUSION_SCALE_PARAM in ModelDSL.jl).
+    scale_float = Float64(scale)
+
+    isfinite(scale_float) || error("Diffusion scale must be finite.")
+    scale_float > 0.0 || error("Diffusion scale must be positive.")
+
+    sim.params[DIFFUSION_SCALE_PARAM] = scale_float
+
+    # Restart the integrator from the current solution, with changed parameters.
+    ynew = copy(sim.integrator_ref[].u)
+
+    restart_after_manual_change!(
+        sim,
+        ynew,
+    )
+
+    return nothing
+end

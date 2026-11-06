@@ -345,52 +345,6 @@ function set_dtmax_app!(app::AppState, new_dtmax::Float64)
 end
 
 
-function public_model_parameter_names(model::ModelSpec)
-    return sort(
-        [
-            key for key in keys(model.default_params)
-            if !startswith(String(key), "__")
-        ];
-        by = String,
-    )
-end
-
-
-function visible_model_parameter_names(
-    model::ModelSpec,
-    params::AbstractDict{Symbol},
-)
-    # The parameter fields: every public parameter except those used only by
-    # profile sets other than the active one.
-    hidden = hidden_spatial_profile_parameters(model, params)
-
-    return [name for name in public_model_parameter_names(model) if !(name in hidden)]
-end
-
-
-function current_spatial_profile_values(simulations::AbstractVector{<:SimulationState})
-    # The active profiles carried by every panel: one name => values table
-    # per panel.
-    isempty(simulations) && return Dict{String, Vector{Float64}}[]
-    model = first(simulations).model
-    isempty(model.spatial_profile_sets) && return Dict{String, Vector{Float64}}[]
-    set_index = _active_spatial_profile_set_index(
-        first(simulations).params,
-        model.spatial_profile_sets,
-    )
-    _, profiles = model.spatial_profile_sets[set_index]
-
-    return [
-        Dict{String, Vector{Float64}}(
-            profile_name => Float64.(collect(sim.params[spatial_profile_override_key(profile_name)]))
-            for (profile_name, _) in profiles
-            if haskey(sim.params, spatial_profile_override_key(profile_name))
-        )
-        for sim in simulations
-    ]
-end
-
-
 function show_spatial_profiles!(
     app::AppState,
     panel_profiles::AbstractVector{<:AbstractDict{String}},
@@ -1162,29 +1116,6 @@ end
 # ============================================================
 # Diffusion rescaling
 # ============================================================
-
-function set_diffusion_scale!(sim::SimulationState, scale::Real)
-    # The domain slider sets the squared domain length L^2. The model keeps
-    # its parameters; the right-hand side divides every diffusion coefficient
-    # by L^2 (see DIFFUSION_SCALE_PARAM in ModelDSL.jl).
-    scale_float = Float64(scale)
-
-    isfinite(scale_float) || error("Diffusion scale must be finite.")
-    scale_float > 0.0 || error("Diffusion scale must be positive.")
-
-    sim.params[DIFFUSION_SCALE_PARAM] = scale_float
-
-    # Restart the integrator from the current solution, with changed parameters.
-    ynew = copy(sim.integrator_ref[].u)
-
-    restart_after_manual_change!(
-        sim,
-        ynew,
-    )
-
-    return nothing
-end
-
 
 function set_diffusion_scale_app!(
     app::AppState,

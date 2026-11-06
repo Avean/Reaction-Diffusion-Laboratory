@@ -12,3 +12,6 @@ Thumbs.db
 
 # Simulation and series saves
 saves/
+
+# Output of the scripting API
+results/

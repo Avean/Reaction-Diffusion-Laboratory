@@ -897,3 +897,30 @@ function hidden_spatial_profile_parameters(
 
     return model.spatial_profile_hidden_parameters[index]
 end
+
+
+# ============================================================
+# Public and visible parameter names
+# ============================================================
+
+function public_model_parameter_names(model::ModelSpec)
+    return sort(
+        [
+            key for key in keys(model.default_params)
+            if !startswith(String(key), "__")
+        ];
+        by = String,
+    )
+end
+
+
+function visible_model_parameter_names(
+    model::ModelSpec,
+    params::AbstractDict{Symbol},
+)
+    # The parameter fields: every public parameter except those used only by
+    # profile sets other than the active one.
+    hidden = hidden_spatial_profile_parameters(model, params)
+
+    return [name for name in public_model_parameter_names(model) if !(name in hidden)]
+end

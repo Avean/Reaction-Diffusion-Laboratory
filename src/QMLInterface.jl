@@ -31,6 +31,29 @@ import ..ReactionDiffusionApp
 import ..StartupSplash
 const RD = ReactionDiffusionApp
 
+# The save files and the JSON writer live in the core (SaveLoad.jl); the
+# window actions in SaveLoadQML.jl and the bindings here use them directly.
+import ..ReactionDiffusionApp:
+    SAVES_DIR,
+    SAVE_FORMAT_VERSION,
+    active_profile_set_entry,
+    json_object,
+    json_string,
+    json_text,
+    parse_simulation_save,
+    read_save_document,
+    save_display_path,
+    save_field,
+    save_number,
+    saved_time_text,
+    series_saves_dir,
+    series_settings_entry,
+    simulation_save_document,
+    simulation_save_path,
+    simulation_saves_dir,
+    sorted_json_object,
+    write_save_file
+
 include("SeriesPresets.jl")
 
 const QML_FILE = normpath(joinpath(@__DIR__, "..", "qml", "Main.qml"))
@@ -213,37 +236,9 @@ function set_if_changed!(observable::Observable, value)
 end
 
 
-function json_string(value::AbstractString)
-    io = IOBuffer()
-    print(io, '"')
-
-    for character in String(value)
-        if character == '"'
-            print(io, "\\\"")
-        elseif character == '\\'
-            print(io, "\\\\")
-        elseif character == '\n'
-            print(io, "\\n")
-        elseif character == '\r'
-            print(io, "\\r")
-        elseif character == '\t'
-            print(io, "\\t")
-        elseif Int(character) < 0x20
-            @printf(io, "\\u%04x", Int(character))
-        else
-            print(io, character)
-        end
-    end
-
-    print(io, '"')
-    return String(take!(io))
-end
-
-
 function json_string_array(values)
     return "[" * join(json_string.(String.(collect(values))), ",") * "]"
 end
-
 
 
 function json_number(value::Real)
@@ -3154,7 +3149,7 @@ function run_qml_event_loop!(
 end
 
 
-include("SaveLoad.jl")
+include("SaveLoadQML.jl")
 
 
 function register_qml_functions!(controller::QMLController)

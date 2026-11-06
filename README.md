@@ -217,23 +217,124 @@ The `id` in a `model.jl` names the folder of its saves, so it must be unique
 among the models, which the application checks at startup, and must not change
 afterwards.
 
+## Scripting API
+
+Batch experiments run from Julia scripts, without the window, with
+`src/RDLabAPI.jl`. It builds on the same core as the application
+(`src/RDLabCore.jl`, which loads neither QML nor Makie), so a series computes
+the same realizations as the series window: the same solver, perturbations,
+random stream per run (seed + run − 1), stationarity check and head detection.
+
+**Body coordinates.** `Body(L, ρ0, ρ1)` is a body of length `L` with the source
+density ρ_body(s) = ρ0 + ρ1 (1/2 − s), where s ∈ [0, 1] runs from the head
+(s = 0) to the foot (s = 1). A piece [s_a, s_b] of length f = s_b − s_a becomes a
+panel by the *piece rule*: length f L, ρ1 f, and ρ0 = ρ_body at the piece centre;
+on the panel the head side is on the right, ρ(x) = ρ0 − ρ1/2 + ρ1 x. `ρ1 = 0`
+(`without_sd(body)`) is the body without source density, ρ ≡ ρ0.
+
+| Function | |
+|---|---|
+| `load_models()`, `list_models()` | the model registry |
+| `make_state(model; body, piece, length, N, params, rho, initial)` | a panel; `rho` may be a profile set of the model, `(ρ0 = …, ρ1 = …)`, an array or a function; `initial` is `:rest`, constants, another state or a matrix |
+| `steady_state(state)` | run until stationary (the series check) |
+| `cut(state, s_a, s_b)` | a piece; keeps u, v and ρ (`split_simulation_state`) |
+| `join(left, right; flip_left, flip_right)` | a doublet (`merge_simulation_states`); ρ is carried by the pieces |
+| `graft(host, donor, s)` | the host split at s with the donor inserted |
+| `run_series(spec)`, `run_single(spec; times)` | a series in parallel over realizations; one realization with profiles at given times |
+
+Wounds are `Wound(:ends | :left | :right | :junctions | fraction; width, height)`
+or `Wound(s = …; …)`, with `width = (min, max)` in absolute length units and
+`height = (min, max)`, drawn per realization as the series window draws them.
+
+A complete example, the E4b experiment (`scripts/experiments/E4b.jl` is the
+full version):
+
+```julia
+include("src/RDLabAPI.jl")      # from the repository folder; a script elsewhere
+using .RDLabAPI                 # includes joinpath(<repository>, "src", "RDLabAPI.jl")
+
+body = Body(2.0, 1.0, 0.5)                       # L, ρ0, ρ1
+params = (Du = 0.01, Dv = 1.0)
+
+# The intact animal, run to its steady state (one head at the head end).
+intact = steady_state(make_state(:gierer_meinhardt_rho; body = body, N = 300,
+                                 params = params, initial = (u = 1.0, v = 2.0)))
+
+# Cut out the middle 0.6 L and wound it at both ends, 100 times.
+fragment = cut(intact, 0.2, 0.8)
+spec = SeriesSpec(
+    experiment = "E4b",
+    name = "middle",
+    start = fragment,
+    wounds = [Wound(:ends; width = (0.07, 0.16), height = (2.0, 4.0))],
+    runs = 100,
+    seed = 12345,
+    save_fields = 5,                              # fields/run_001.csv … run_005.csv
+)
+result = run_series(spec)
+result.summary["head_counts"]                     # Dict("0" => 33, "1" => 67)
+```
+
+Run scripts with threads, one realization per thread:
+
+```bash
+julia --project --threads=auto scripts/experiments/E4a.jl
+```
+
+Every `run_series` / `run_single` call writes one folder
+`results/<experiment>/<date>_<time>_<name>/` (not tracked by git):
+
+- `spec.toml` – the complete input, including how the start state was built
+  (make_state, steady_state, cut, join …); `rerun("…/spec.toml")` runs it again;
+- `meta.json` – git commit and dirty flag, Julia version, threads, seed, date,
+  model, and the panel parameters actually used (length, N, ρ, piece-rule ρ0 and
+  ρ1 of every piece, D and D / length²);
+- `outcomes.csv` – one row per realization: run, converged, final time, steps,
+  residual, number of heads, head positions as panel fraction (`head_x`) and
+  body coordinate (`head_s`), the piece, amplitudes and prominences;
+- `summary.json` – head counts and head configurations as in the series window;
+- `fields/initial.csv` and `fields/run_XXX.csv` – x, position, s, u, v, ρ.
+
+The dense factorizations of the solver use one MKL thread each in the API
+(set_solver_threads!), so realizations can run side by side; the application
+leaves MKL at one thread per core, which changes results only in the last
+digits (~1e-12). `run_series(spec; threads = 1, mkl_threads = :default)`
+computes exactly as the application does.
+
+Tests: `julia --project --threads=auto test/runtests.jl`. Among them,
+`test/gui_reproduction.jl` rebuilds series saved by the application's former
+Save graph button (`saved_graphs/<date>_<time>/`: parameters.txt, metadata.json
+and the CSV files) and checks that the API gives the same head counts,
+configurations and final profiles; put such folders in `saved_graphs/` or run
+`julia --project test/gui_reproduction.jl <folder> ...`. `test/gui_vs_api.jl`
+(needs a display or `xvfb-run`) drives the application's series window and
+checks that the API computes the same series bitwise.
+
 ## Project layout
 
 ```
 app.jl                 entry point of the application
 src/
-  ReactionDiffusionApp.jl  core module: models, grid, solver, series
+  RDLabCore.jl             headless core: models, grid, solver, partitions, series, saves
+  RDLabAPI.jl              scripting API on the core (body coordinates, series, files)
+  ReactionDiffusionApp.jl  application module: the core plus plots and window state
   ModelDSL.jl              RDModel definition layer
   Simulation.jl            TRBDF2 integration, snapshots
+  DomainPartition.jl       split / merge of simulation states (core)
+  DomainPartitionApp.jl    split / merge / swap / delete of the window's panels
   SeriesSimulation.jl      series runs and steady-state detection
-  SaveLoad.jl              save files of the simulation and the series
+  SaveLoad.jl              save files: names, JSON, simulation documents (core)
+  SaveLoadQML.jl           Save, Load and Save series of the window
   HeadDetection.jl         peak ("head") detection
   QMLInterface.jl          bridge between Julia and the QML interface
   StartupSplash.jl         startup progress, stages and Cancel
   SplashProcess.jl         the splash window's own process
 qml/                   QML windows (main window, series window, dialogs, splash)
 Models/                model definitions and series presets
+scripts/experiments/   example experiment scripts (E3, E4a, E4b, E5_scan, E6a)
+test/                  tests of the core and the API
 saves/                 saves of the simulation and the series (not tracked)
+results/               output of the scripting API (not tracked)
 ```
 
 ## Platform notes

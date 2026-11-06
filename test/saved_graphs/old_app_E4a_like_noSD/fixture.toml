@@ -1,0 +1,12 @@
+# A Save graph folder written by the application at commit 7e05f77 (the last
+# version before the Nov 5 changes: D shown divided by the domain scale,
+# linear ρ profiles centred at ρ0), driven by test/tools/make_old_app_fixtures.jl
+# under Xvfb on a 4-core Intel Xeon (AVX-512). The images and the notebook of
+# the folder are left out.
+#
+# The dense factorizations used MKL at its default there, 4 threads. With
+# another thread count or processor the last digits of the profiles can
+# differ, so the test requires the counts exactly and the profiles to 1e-9,
+# and reports whether they are also bitwise identical.
+mkl_threads = 4
+bitwise = false
