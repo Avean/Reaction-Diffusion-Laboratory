@@ -224,6 +224,8 @@ Batch experiments run from Julia scripts, without the window, with
 (`src/RDLabCore.jl`, which loads neither QML nor Makie), so a series computes
 the same realizations as the series window: the same solver, perturbations,
 random stream per run (seed + run − 1), stationarity check and head detection.
+[CLAUDE.md](CLAUDE.md) is a complete guide to the API (concepts, every function,
+output files, pitfalls), written so that an AI agent can use it right away.
 
 **Body coordinates.** `Body(L, ρ0, ρ1)` is a body of length `L` with the source
 density ρ_body(s) = ρ0 + ρ1 (1/2 − s), where s ∈ [0, 1] runs from the head
