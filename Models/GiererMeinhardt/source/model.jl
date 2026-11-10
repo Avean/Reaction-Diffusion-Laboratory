@@ -34,13 +34,14 @@ RDModel(
         
         Du = 1e-2,
         Dv = 1e0,
-        Dsd = 1e0/τ0,
+        Dsd = 1e0,
 
         a = 1.5,
         b = 2.0,
 
         μu = 0.5,
         μv = 1.0,
+        μsd = 1.0,
 
         pu = 0.0,
         pv = 0.0,
@@ -119,7 +120,7 @@ RDModel(
     reaction = function (F, U, x, p, t)
         @. F.u = p.a * U.sd * U.u^2 / (U.v + 1.0) - p.μu * U.u + p.pu
         @. F.v = p.b * U.sd * U.u^2 - p.μv * U.v + p.pv
-        @. F.sd = (U.u - U.sd) / p.τ
+        @. F.sd = (U.u - p.μsd *U.sd) / p.τ
 
         return nothing
     end,
@@ -127,13 +128,13 @@ RDModel(
     diffusion = (
         u = :Du,
         v = :Dv,
-        sd = :Dsd,
+        sd = p -> p.Dsd / p.τ,
     ),
 
     latex_equations = (
     raw"\partial_t u = D_u \partial_{xx} u + a \cdot s \frac{u^2}{v + 1} - \mu_u u ",
     raw"\partial_t v = D_v \partial_{xx} v + b \cdot s u^2 - \mu_v v",
-    raw"\partial_t s = \frac{1}{\tau}(D_{s} \partial_{xx} s + u - s)",
+    raw"\partial_t s = \frac{1}{\tau}(D_{s} \partial_{xx} s + u - \mu_{s} s)",
     ),
 
 )
