@@ -109,6 +109,37 @@ function drive_application()
         file = only(filter(name -> endswith(name, ".json"), readdir(directory)))
         GUI["load"] = Q.load_simulation_save!(c, file; root = SCRATCH)
         check_message(c, "Load")
+
+        Q.select_model!(c, "GiererMeinhardt/rho_two_piece")
+        check_message(c, "Two-piece model selection")
+        for (name, value) in (("ρsplit", "0.3"), ("ρleft", "1"), ("ρright", "3"))
+            Q.set_model_parameter_from_qml!(c, name, value)
+            check_message(c, "Two-piece parameter $name")
+        end
+        Q.select_spatial_profile_set!(c, 2)
+        check_message(c, "Exponential profile selection")
+        Q.save_simulation!(c, "two_piece"; root = SCRATCH)
+        check_message(c, "Save two-piece model")
+        Q.select_spatial_profile_set!(c, 1)
+        check_message(c, "Linear profile selection")
+        Q.set_model_parameter_from_qml!(c, "ρleft", "3")
+        check_message(c, "Change left piece")
+        directory = joinpath(SCRATCH, "simulation", "gierer_meinhardt_rho_two_piece")
+        file = only(filter(name -> endswith(name, ".json"), readdir(directory)))
+        GUI["two_piece_load"] = Q.load_simulation_save!(c, file; root = SCRATCH)
+        check_message(c, "Load two-piece model")
+        GUI["two_piece_set"] = c.bindings.active_profile_set[]
+        GUI["two_piece_profile"] = only(Q.RD.current_spatial_profile_values(c.app.simulations))["ρ"]
+
+        GUI["sidebar_profiles"] = String[]
+        for (key, index) in (("rho", 7), ("rho_independent", 2), ("rho_graft", 2))
+            Q.select_model!(c, "GiererMeinhardt/$key")
+            check_message(c, "Model selection for $key")
+            Q.select_spatial_profile_set!(c, index)
+            check_message(c, "Sidebar profile selection for $key")
+            sets = c.app.sim.model.spatial_profile_sets
+            push!(GUI["sidebar_profiles"], first(sets[c.bindings.active_profile_set[]]))
+        end
     catch error
         GUI["error"] = sprint(showerror, error, catch_backtrace())
     finally
@@ -154,6 +185,18 @@ end
 
 @testset "application and API compute the same series" begin
     @test GUI["load"] == true
+    @test GUI["two_piece_load"] == true
+    @test GUI["two_piece_set"] == 2
+    legacy = make_state(:gierer_meinhardt_rho; N = 300, params = (ρsplit = 0.3,), rho = "ExpHeadFoot")
+    @test GUI["two_piece_profile"] ≈ rho_values(legacy)
+    @test GUI["sidebar_profiles"] == ["ExpHeadFoot", "Exponential", "Gauss"]
+
+    catalog = Q.JSON.parse(Q.model_catalog_json(Q.RD.MODEL_REGISTRY))
+    profile_sets = Dict(entry["key"] => entry["profileSets"] for family in catalog for entry in family["models"])
+    @test profile_sets["GiererMeinhardt/rho"][7] == "ExpHeadFoot"
+    @test profile_sets["GiererMeinhardt/rho_independent"] == ["Linear", "Exponential"]
+    @test profile_sets["GiererMeinhardt/rho_graft"] == ["Linear", "Gauss"]
+    @test isempty(profile_sets["GiererMeinhardt/source"])
 
     for case in CASES
         gui = GUI[case.name]

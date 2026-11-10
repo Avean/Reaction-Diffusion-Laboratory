@@ -38,8 +38,6 @@ end
 
 mutable struct PlotPanel
     axes::Vector{Axis}
-    ui_items::Vector{Any}
-    # Makie controls in the plot layout (the spatial profile selector).
     domain_length_scale::Float64
     perturbation_controls::Vector{Any}
 
@@ -126,7 +124,6 @@ mutable struct AppState
     # it only rescales diffusion inside the right-hand side.
 
     spatial_profile_set_revision::Observable{Int}
-    # Incremented when the Previous / Next buttons under the profile plots
-    # change the active profile set, so the interface can show the set's
-    # parameters and formula.
+    # Incremented when the active profile set changes, so the interface can
+    # show the set's parameters and formula.
 end

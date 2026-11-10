@@ -28,6 +28,7 @@ const C = RDLabAPI.C
     end
 
     include("test_piece_rule.jl")
+    include("test_rho_two_piece.jl")
     include("test_cut_join.jl")
     include("test_e4b_smoke.jl")
     include("gui_reproduction.jl")

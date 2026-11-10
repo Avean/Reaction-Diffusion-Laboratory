@@ -30,6 +30,11 @@ ApplicationWindow {
     property bool textEditorFocused: false
     property int selectedFamilyIndex: 0
     property int activeFamilyIndex: findFamilyIndex(ui.activeModelKey)
+    readonly property var activeProfileSets: {
+        const family = modelCatalog[activeFamilyIndex]
+        const entry = family && family.models.find(item => item.key === ui.activeModelKey)
+        return entry ? entry.profileSets : []
+    }
     property string bottomPanel: ""
     // Series mode leaves the main window usable: Start takes everything from
     // the live state. Only a running series disables its controls, except the
@@ -1034,6 +1039,90 @@ ApplicationWindow {
                                 id: parameterColumn
                                 Layout.fillWidth: true
                                 spacing: 6
+                                readonly property bool twoPieceProfile: ui.activeModelKey === "GiererMeinhardt/rho_two_piece"
+
+                                RowLayout {
+                                    id: pieceControls
+                                    visible: parameterColumn.twoPieceProfile
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    readonly property var parameters: visible ? JSON.parse(window.modelParametersJson) : []
+
+                                    Repeater {
+                                        model: ["Left piece", "Profile", "Right piece"]
+
+                                        ColumnLayout {
+                                            id: choiceGroup
+                                            required property int index
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.alignment: Qt.AlignTop
+                                            readonly property bool profileGroup: index === 1
+                                            readonly property string parameterKey: index === 0 ? "ρleft" : "ρright"
+                                            readonly property int selection: {
+                                                if (profileGroup)
+                                                    return ui.activeProfileSet
+                                                const parameter = pieceControls.parameters.find(item => item.key === parameterKey)
+                                                return parameter ? parameter.value : 0
+                                            }
+
+                                            Label {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: choiceGroup.modelData
+                                            }
+
+                                            Repeater {
+                                                model: choiceGroup.profileGroup
+                                                       ? window.activeProfileSets
+                                                       : ["Top →", "Top ←", "Bottom →", "Bottom ←"]
+
+                                                TileButton {
+                                                    required property int index
+                                                    required property string modelData
+                                                    Layout.fillWidth: true
+                                                    dark: false
+                                                    text: modelData
+                                                    checked: choiceGroup.selection === index + 1
+                                                    enabled: window.controlsEnabled
+                                                    onClicked: {
+                                                        if (checked)
+                                                            return
+                                                        if (choiceGroup.profileGroup)
+                                                            Julia.selectSpatialProfileSet(index + 1)
+                                                        else
+                                                            Julia.setModelParameter(choiceGroup.parameterKey, String(index + 1))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Label {
+                                    visible: profileChoices.visible
+                                    text: "Spatial profile"
+                                }
+
+                                Flow {
+                                    id: profileChoices
+                                    visible: !parameterColumn.twoPieceProfile && window.activeProfileSets.length > 1
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: profileChoices.visible ? window.activeProfileSets : []
+
+                                        TileButton {
+                                            required property int index
+                                            required property string modelData
+                                            dark: false
+                                            text: modelData
+                                            checked: ui.activeProfileSet === index + 1
+                                            enabled: window.controlsEnabled
+                                            onClicked: Julia.selectSpatialProfileSet(index + 1)
+                                        }
+                                    }
+                                }
 
                                 // Formula of the active spatial profile set, at the
                                 // scale of the equations; only its parameters follow.
@@ -1076,6 +1165,8 @@ ApplicationWindow {
                                         required property real value
                                         required property string displayText
                                         Layout.fillWidth: true
+                                        visible: !parameterColumn.twoPieceProfile
+                                                 || (key !== "ρleft" && key !== "ρright")
 
                                         Label {
                                             Layout.preferredWidth: 74

@@ -112,6 +112,7 @@ mutable struct QMLBindings
     profile_formula_note::Observable{String}
     # Formula of the active spatial profile set, shown under Model
     # parameters: an SVG data URI ("" for none), its width and a note.
+    active_profile_set::Observable{Int}
     simulation_saves_json::Observable{String}
     simulation_save_details_json::Observable{String}
     # The Load window: the saves of the active model and the selected one.
@@ -935,7 +936,8 @@ function model_catalog_json(registry::Dict{String, RD.ModelSpec})
         models = [
             "{" *
             "\"key\":" * json_string(entry.key) * "," *
-            "\"label\":" * json_string(entry.label) *
+            "\"label\":" * json_string(entry.label) * "," *
+            "\"profileSets\":" * json_string_array(first.(registry[entry.key].spatial_profile_sets)) *
             "}"
             for entry in family.models
         ]
@@ -974,6 +976,10 @@ function update_model_bindings!(controller::QMLController)
     set_if_changed!(
         bindings.model_parameters_json,
         model_parameters_json(model, controller.app.sim.params),
+    )
+    set_if_changed!(
+        bindings.active_profile_set,
+        RD._active_spatial_profile_set_index(controller.app.sim.params, model.spatial_profile_sets),
     )
     set_if_changed!(bindings.variables_json, json_string_array(model.varnames))
     set_if_changed!(
@@ -2835,6 +2841,23 @@ function set_model_parameter_from_qml!(controller::QMLController, name, value_te
 end
 
 
+function select_spatial_profile_set!(controller::QMLController, index::Int)
+    return guarded_action(controller, "Profile set change failed") do
+        controller.series.running[] && error("Stop the Series run before changing the profile set.")
+        app = controller.app
+        sets = app.sim.model.spatial_profile_sets
+        1 <= index <= length(sets) || error("Invalid spatial profile set index: $index.")
+        index == RD._active_spatial_profile_set_index(app.sim.params, sets) && return nothing
+        RD.set_active_spatial_profile_set_app!(
+            app,
+            index;
+            steps_per_frame = controller.steps_per_frame,
+            worker_sleep_time = controller.worker_sleep_time,
+        )
+    end
+end
+
+
 function set_equation_values_visible!(controller::QMLController, visible)
     return guarded_action(controller, "Equation display change failed") do
         controller.bindings.equation_values_visible[] = Bool(visible)
@@ -3226,6 +3249,7 @@ function register_qml_functions!(controller::QMLController)
         "setModelParameter",
         (name, value) -> set_model_parameter_from_qml!(controller, name, value),
     )
+    QML.qmlfunction("selectSpatialProfileSet", index -> select_spatial_profile_set!(controller, Int(index)))
     QML.qmlfunction(
         "setEquationValuesVisible",
         value -> set_equation_values_visible!(controller, value),
@@ -3402,6 +3426,7 @@ function qml_property_map(
         "profileFormulaImage" => bindings.profile_formula_image,
         "profileFormulaWidth" => bindings.profile_formula_width,
         "profileFormulaNote" => bindings.profile_formula_note,
+        "activeProfileSet" => bindings.active_profile_set,
         "simulationSavesJson" => bindings.simulation_saves_json,
         "simulationSaveDetailsJson" => bindings.simulation_save_details_json,
         "equationValuesVisible" => bindings.equation_values_visible,
@@ -3587,6 +3612,7 @@ function create_qml_controller(;
         Observable(""),
         Observable(0.0),
         Observable(""),
+        Observable(RD._active_spatial_profile_set_index(simulation.params, first_model.spatial_profile_sets)),
         Observable("{\"saves\":[],\"skipped\":[]}"),
         Observable("{}"),
     )
@@ -3617,8 +3643,7 @@ function create_qml_controller(;
     controller.series.selected_position = 0.5
     refresh_series_bindings!(controller)
     refresh_profile_formula!(controller)
-    # The Previous / Next buttons under the profile plots change the active
-    # profile set outside QML; its parameters and formula follow here.
+    # Keep the sidebar's selected profile, parameter fields and formula in sync.
     on(app.spatial_profile_set_revision) do _
         guarded_action(controller, "Profile set change failed") do
             controller.bindings.series_mode[] && clear_series_results!(controller)
