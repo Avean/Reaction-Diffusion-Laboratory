@@ -1,0 +1,10 @@
+name = "u left wound (wide)"
+description = "Adds noise to u at the left end. Width is 6–12% of the panel. Amplitude is 0.8–1.3."
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.12
+height_min = 0.8
+height_max = 1.3

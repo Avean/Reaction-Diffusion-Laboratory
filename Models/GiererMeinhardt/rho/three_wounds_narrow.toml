@@ -1,0 +1,26 @@
+name = "u three wounds (narrow)"
+description = "Adds noise to u at both ends and the center. Width is 3–6% of the panel. Amplitude is 1.6–2.6 at the ends and 1.2–1.6 at the center."
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 1.6
+height_max = 2.6
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 1.2
+height_max = 1.6
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 1.6
+height_max = 2.6
