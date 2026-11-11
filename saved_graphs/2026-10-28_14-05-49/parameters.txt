@@ -1,0 +1,31 @@
+════════════════════════════════════════════════════════════════════════
+2026-10-28 14:05:49   Gierer Mainhardt / Rho graft
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du            0.1      Dv            10       a             1.5
+  b             2        pu            0        pv            0
+  μu            0.5      μv            1        ρ0            1
+  ρ1            0.5      ρa            0.7      ρb            3.5
+  ρc            15       ρpeak_height  0        ρpeak_pos     0.5
+  ρpeak_width   0.05
+  Spatial profile   Linear
+
+Domain
+  Boundary       Neumann             Domain length  0.3162
+  Rescale        10^-1               Maximum dt     0.01
+  Panels         2                   Panel lengths  0.1581 | 0.1581
+  Grid points    300 | 300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12345     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: None
+     no perturbations
+  Panel 2   preset: None
+     no perturbations
+
+

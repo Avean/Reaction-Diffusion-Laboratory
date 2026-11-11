@@ -1,0 +1,13 @@
+{
+  "model":"Gierer Mainhardt / Rho graft",
+  "saved":"2026-10-28 14:05:56",
+  "mode":"series",
+  "boundary":"Neumann",
+  "time":0,
+  "steps":0,
+  "variables":["u","v"],
+  "spatial_profiles":["ρ"],
+  "panels":[{"panel":1,"length":0.15811388300841897,"status":"t=0.00e+00  steps=0\ndt=1.0e-04","not_converged":0},{"panel":2,"length":0.15811388300841897,"status":"t=0.00e+00  steps=0\ndt=1.0e-04","not_converged":0}],
+  "head_variable":"u",
+  "completed_runs":0
+}

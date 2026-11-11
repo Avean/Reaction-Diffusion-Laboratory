@@ -1,0 +1,11 @@
+{
+  "model":"Gierer Mainhardt / Rho profile",
+  "saved":"2026-10-28 16:12:51",
+  "mode":"simulation",
+  "boundary":"Neumann",
+  "time":8925.0433017226205,
+  "steps":1960,
+  "variables":["u","v"],
+  "spatial_profiles":["ρ"],
+  "panels":[{"panel":1,"length":4.6415888336127802,"status":"t=8.93e+03  steps=1960\ndt=1.0e+01"}]
+}

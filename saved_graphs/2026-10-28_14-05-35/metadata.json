@@ -1,0 +1,11 @@
+{
+  "model":"Gierer Mainhardt / Basic",
+  "saved":"2026-10-28 14:05:35",
+  "mode":"simulation",
+  "boundary":"Neumann",
+  "time":0,
+  "steps":0,
+  "variables":["u","v"],
+  "spatial_profiles":[],
+  "panels":[{"panel":1,"length":1,"status":"t=0.00e+00  steps=0\ndt=1.0e-04"}]
+}

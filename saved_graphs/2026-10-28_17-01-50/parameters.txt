@@ -1,0 +1,31 @@
+════════════════════════════════════════════════════════════════════════
+2026-10-28 17:01:50   Gierer Mainhardt / Rho profile
+════════════════════════════════════════════════════════════════════════
+
+Model parameters
+  Du   4.64e-4     Dv   4.64e-2     a    1.5
+  b    2           pu   0           pv   0
+  μu   0.5         μv   1           ρ0   1
+  ρ1   0           ρa   0.5         ρb   0.5
+  ρc   1           ρσa  0           ρσb  0
+  ρσc  0
+  Spatial profile   FootHead
+
+Domain
+  Boundary       Neumann     Domain length  2.823
+  Rescale        10^1.33     Maximum dt     0.1
+  Panels         1           Panel lengths  2.823
+  Grid points    300
+
+Series settings
+  Runs                100       Maximum time        1e+15     Check interval      1e+3
+  Tolerance           1e-6      Consecutive checks  3         Series dtmax        1e+10
+  Step limit          1e+7      Seed                12343     Head variable       u
+
+Series perturbations   (position in axis units, widths as fractions of the panel)
+  Panel 1   preset: Custom   initial u = 0, v = 0
+      #   var    position   width min   width max   height min   height max
+      1   u          0.00        0.06        0.13          1.0          3.0
+      2   u          2.82        0.06        0.13          1.0          3.0
+
+

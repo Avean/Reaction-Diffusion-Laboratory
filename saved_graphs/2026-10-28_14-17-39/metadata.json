@@ -1,0 +1,13 @@
+{
+  "model":"Gierer Mainhardt / Basic",
+  "saved":"2026-10-28 14:17:39",
+  "mode":"series",
+  "boundary":"Neumann",
+  "time":2050410.2711713612,
+  "steps":4925,
+  "variables":["u","v"],
+  "spatial_profiles":[],
+  "panels":[{"panel":1,"length":3.9810717055349736,"status":"t=2.05e+06  steps=4925\ndt=1.0e+05\nR(last)=2.03e-08","not_converged":0}],
+  "head_variable":"u",
+  "completed_runs":100
+}

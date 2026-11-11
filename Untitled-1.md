@@ -1,0 +1,15 @@
+<!-- STRONA DZIAŁU: Ten tekst to sekcja „O studiach”. Kafelki działu pochodzą z menu Studia; ramkę „W skrócie” edytujesz w polach formularza poniżej treści. -->
+
+<!-- UKŁAD JAWNY: ## rozpoczyna sekcję w spisie. Nazwę można zmieniać; {#id} zachowuje adres. Bloki :::nazwa … ::: sterują wyglądem; komentarze są tylko instrukcjami dla redaktora. -->
+
+<!-- TEKST: Zwykły Markdown. Specjalny układ wymaga jawnego znacznika bloku. -->
+
+Uczymy matematyki tak, jak ją uprawiamy. Zajęcia prowadzą aktywni badacze, a program łączy solidne podstawy z dużą swobodą wyboru: od pierwszego roku można dopasować poziom zajęć do swoich możliwości, a z czasem — wybrać kierunek własnego rozwoju. Studia uczą precyzyjnego myślenia, stawiania i rozwiązywania problemów oraz pracy z modelami matematycznymi i danymi, czyli umiejętności cenionych w nauce, gospodarce, technologii i edukacji.
+
+Na kierunku matematyka studia I stopnia trwają trzy lata, a II stopnia — dwa. Pierwsze semestry to fundamenty: analiza matematyczna, algebra liniowa i wstęp do matematyki, prowadzone w wersji standardowej albo rozszerzonej — dla osób, które chcą od początku pracować intensywniej. Później studenci wybierają specjalność: przygotowującą do pracy badawczej, do zastosowań w analizie danych, finansach i ubezpieczeniach albo do pracy nauczyciela matematyki. Studia I stopnia kończą się pracą licencjacką i egzaminem licencjackim. Na studiach II stopnia wybór przedmiotów jest jeszcze szerszy, a praca magisterska powstaje pod opieką pracownika naukowego, często na styku z jego badaniami.
+
+Osobom, które chcą łączyć matematykę z informatyką, proponujemy kierunki na pograniczu obu dziedzin: sztuczną inteligencję w analizie danych oraz Indywidualne Studia Informatyczno-Matematyczne (ISIM), prowadzone wspólnie z Instytutem Informatyki, z indywidualnym planem studiów i opieką tutora. Absolwenci studiów magisterskich mogą kontynuować naukę w Kolegium Doktorskim Matematyki Szkoły Doktorskiej UWr, gdzie pod opieką promotora prowadzą własne badania i przygotowują rozprawę. Nauczycielom, którzy chcą uczyć matematyki, oferujemy kwalifikacyjne studia podyplomowe.
+
+Na starcie nie zostajesz sam. Każdy rocznik ma swojego opiekuna, a w tutorni starsi studenci pomagają w rozwiązywaniu zadań i w nadrabianiu zaległości. Poza zajęciami działają studenckie koła naukowe, które organizują wykłady, warsztaty i szkoły, a seminaria naukowe Instytutu są otwarte dla wszystkich zainteresowanych. Semestr lub rok na innej uczelni — w Polsce albo za granicą — można spędzić w ramach programów wymiany, takich jak Erasmus+ i MOST. W tym dziale znajdziesz też wszystko, czego potrzeba na co dzień: plan zajęć, kalendarz roku akademickiego z kolorami dni, zasady zapisów na zajęcia, terminy i formularze oraz informacje o egzaminach i dyplomie.
+
+Jakość kształcenia potwierdza ocena wyróżniająca, którą Polska Komisja Akredytacyjna przyznała kierunkowi matematyka. Nasi absolwenci pracują w firmach technologicznych, bankach i towarzystwach ubezpieczeniowych, w szkołach i na uczelniach — wszędzie tam, gdzie liczy się ścisłe myślenie i umiejętność rozwiązywania nietypowych problemów.
