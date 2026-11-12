@@ -237,6 +237,15 @@ can run in parallel. To match the desktop solver threading on the same
 machine, use `run_series(spec; threads = 1, mkl_threads = :default)`.
 Different processors or solver thread settings can change numerical results.
 
+TRBDF2 uses a sparse Jacobian: the solver detects its pattern for each model
+(the Laplacian, all variables at one grid point and the nonzeros of the dense
+Jacobian at a few random states), colors the columns and factorizes with a
+sparse LU. A model whose pattern fills more than 10 % of the matrix (a global
+coupling) keeps the dense Jacobian. Set `RDLAB_DENSE_JACOBIAN=1` in the
+environment to force the dense Jacobian for every new problem, for example to
+compare the two; `meta.json` records the setting under `jacobian` (`auto` or
+`dense`). The two paths agree to round-off, not bit for bit.
+
 ## Read the output
 
 Each run writes to `results/<experiment>/<date>_<time>_<name>/` by default.

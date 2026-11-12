@@ -57,6 +57,128 @@ function make_initial_state(
 end
 
 
+# ============================================================
+# Sparse Jacobian
+# ============================================================
+#
+# TRBDF2 solves a nonlinear system with Newton's method at every stage and
+# needs the Jacobian of the right-hand side. Without a prototype,
+# OrdinaryDiffEq computes it densely with ForwardDiff (one right-hand-side
+# call per column: the wrapped function only takes dual numbers of chunk
+# size 1, so 600 calls for N = 300 and two variables) and factorizes the
+# dense matrix. A reaction–diffusion Jacobian is almost empty (below 1 % for
+# N = 300), so make_problem passes a sparse prototype: OrdinaryDiffEq then
+# colors the columns, computes the Jacobian with a few calls and factorizes
+# it with a sparse LU.
+#
+# The pattern is detected for each model, because some models are nonlocal
+# (Models/Mechanochemical: global, kernel). It is the union of
+#   (a) the Laplacian pattern for every variable,
+#   (b) the full local block: all variables at the same grid point,
+#   (c) the nonzeros of the dense ForwardDiff Jacobian at a few random,
+#       strictly positive states, with the actual parameters.
+# Above JACOBIAN_DENSITY_LIMIT the dense path stays. Patterns are cached,
+# because make_problem runs at every wound and restart.
+#
+# RDLAB_DENSE_JACOBIAN=1 in the environment forces the dense path (for
+# comparisons); it is read at every make_problem call.
+
+const JACOBIAN_DENSITY_LIMIT = 0.10
+# Scales of the random states of part (c): the values are scale · (0.1 + U[0, 1]).
+const JACOBIAN_PATTERN_SCALES = (1.0, 10.0, 0.1)
+const JACOBIAN_PATTERN_SEED = 0x6a61636f
+const JACOBIAN_PATTERN_CACHE_LIMIT = 64
+const FORWARDDIFF_PKGID = Base.PkgId(Base.UUID("f6369f11-7733-5829-9624-2563aa707210"), "ForwardDiff")
+# key => sparse pattern, or nothing for the dense path.
+const JACOBIAN_PATTERN_CACHE = Dict{UInt64, Union{Nothing, SparseMatrixCSC{Float64, Int}}}()
+const JACOBIAN_PATTERN_LOCK = ReentrantLock()
+
+
+"Whether make_problem is forced to the dense Jacobian (RDLAB_DENSE_JACOBIAN=1)."
+dense_jacobian_forced() = lowercase(get(ENV, "RDLAB_DENSE_JACOBIAN", "")) in ("1", "true", "yes")
+
+"Jacobian setting of make_problem: \"dense\" when forced, \"auto\" otherwise (sparse below the density limit)."
+jacobian_setting() = dense_jacobian_forced() ? "dense" : "auto"
+
+
+function detect_jacobian_pattern(rhs!, Lap::SparseMatrixCSC, N::Int, nvars::Int)
+    n = N * nvars
+    forward_diff = get(Base.loaded_modules, FORWARDDIFF_PKGID, nothing)
+    forward_diff === nothing && return nothing
+
+    rows = Int[]
+    cols = Int[]
+
+    # (a) The Laplacian pattern for every variable.
+    lap_rows, lap_cols, _ = findnz(Lap)
+    for variable in 1:nvars
+        offset = (variable - 1) * N
+        append!(rows, lap_rows .+ offset)
+        append!(cols, lap_cols .+ offset)
+    end
+
+    # (b) All variables at the same grid point.
+    for i in 1:N, a in 1:nvars, b in 1:nvars
+        push!(rows, i + (a - 1) * N)
+        push!(cols, i + (b - 1) * N)
+    end
+
+    # (c) The nonzeros of the dense Jacobian at random strictly positive states.
+    rng = Xoshiro(JACOBIAN_PATTERN_SEED)
+    J = zeros(n, n)
+    dy = zeros(n)
+    f!(out, y) = rhs!(out, y, nothing, 0.0)
+    try
+        for scale in JACOBIAN_PATTERN_SCALES
+            y = scale .* (0.1 .+ rand(rng, n))
+            forward_diff.jacobian!(J, f!, dy, y)
+            for column in 1:n, row in 1:n
+                iszero(J[row, column]) && continue
+                push!(rows, row)
+                push!(cols, column)
+            end
+        end
+    catch err
+        @warn "Sparse Jacobian: the pattern could not be detected, the dense Jacobian is used." exception = err maxlog = 1
+        return nothing
+    end
+
+    pattern = sparse(rows, cols, ones(length(rows)), n, n)
+    fill!(nonzeros(pattern), 1.0)
+    nnz(pattern) > JACOBIAN_DENSITY_LIMIT * n^2 && return nothing
+    return pattern
+end
+
+
+# Hash of the whole content: Base.hash of a long array samples only some of
+# its elements, and two profiles ρ may differ elsewhere.
+content_hash(v::AbstractArray, h::UInt) = foldl((acc, e) -> content_hash(e, acc), v; init = hash(size(v), h))
+content_hash(d::AbstractDict, h::UInt) =
+    foldl((acc, k) -> content_hash(d[k], hash(k, acc)), sort!(collect(keys(d)); by = string); init = hash(:dict, h))
+content_hash(v, h::UInt) = hash(v, h)
+
+
+function jacobian_pattern(model::ModelSpec, rhs!, Lap::SparseMatrixCSC, x::Vector{Float64}, params::Dict{Symbol, Any})
+    # The pattern depends on the model, the grid (N, boundary condition through
+    # the Laplacian, positions for kernels) and the parameters (e.g. a kernel
+    # radius), so all of them make the key.
+    N = length(x)
+    nvars = model.nvars
+    key = hash((model.id, N, nvars))
+    for part in (Lap.colptr, Lap.rowval, x, params)
+        key = content_hash(part, key)
+    end
+
+    return lock(JACOBIAN_PATTERN_LOCK) do
+        haskey(JACOBIAN_PATTERN_CACHE, key) && return JACOBIAN_PATTERN_CACHE[key]
+        length(JACOBIAN_PATTERN_CACHE) >= JACOBIAN_PATTERN_CACHE_LIMIT && empty!(JACOBIAN_PATTERN_CACHE)
+        pattern = detect_jacobian_pattern(rhs!, Lap, N, nvars)
+        JACOBIAN_PATTERN_CACHE[key] = pattern
+        return pattern
+    end
+end
+
+
 function make_problem(
     model::ModelSpec,
     y0::Vector{Float64},
@@ -82,7 +204,12 @@ function make_problem(
         return nothing
     end
 
-    return ODEProblem(rhs!, y0, (0.0, Inf))
+    dense_jacobian_forced() && return ODEProblem(rhs!, y0, (0.0, Inf))
+
+    pattern = jacobian_pattern(model, rhs!, Lap, x, params)
+    pattern === nothing && return ODEProblem(rhs!, y0, (0.0, Inf))
+
+    return ODEProblem(ODEFunction(rhs!; jac_prototype = copy(pattern)), y0, (0.0, Inf))
 end
 
 

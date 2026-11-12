@@ -61,6 +61,8 @@ const RESULTS_DIR = joinpath(REPO_DIR, "results")
 # Threads of the dense linear solver
 # ============================================================
 #
+# Models with a sparse Jacobian (see make_problem in Simulation.jl) are
+# factorized with a sparse LU and do not use these threads. For the others
 # TRBDF2 factorizes a dense Jacobian at its Newton steps, through LinearSolve,
 # which uses Intel MKL where it is available. MKL starts its own threads for
 # every factorization; with several realizations running at once on Julia
@@ -1754,6 +1756,7 @@ function meta_entry(spec, st::RDState, settings, kind::String, started::DateTime
         "julia_version" => string(VERSION),
         "threads" => Threads.nthreads(),
         "solver_threads" => solver_thread_entry(),
+        "jacobian" => C.jacobian_setting(),
         "seed" => spec.seed,
         "model_id" => String(model_of(st).id),
         "model_key" => st.model_key,
