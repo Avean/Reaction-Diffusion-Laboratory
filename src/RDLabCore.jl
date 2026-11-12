@@ -5,10 +5,11 @@
 # ============================================================
 #
 # Models and their DSL, simulation states and the solver, partitioned
-# domains (split / merge of states), head detection, series realizations and
-# the save files. Nothing here loads QML, QMLMakie, GLMakie or CairoMakie, so
-# the core can be used from scripts (see RDLabAPI.jl) as well as by the
-# interactive application, which builds on it (ReactionDiffusionApp.jl).
+# domains (split / merge of states), head detection, series realizations,
+# the save files and the series preset files. Nothing here loads QML,
+# QMLMakie, GLMakie or CairoMakie, so the core can be used from scripts (see
+# RDLabAPI.jl) as well as by the interactive application, which builds on it
+# (ReactionDiffusionApp.jl).
 #
 # The model files in Models/ are loaded once, when this module is loaded.
 #
@@ -25,6 +26,7 @@ using Printf
 using Statistics
 using Dates
 import JSON
+import TOML
 
 include("Types.jl")
 include("Spatial.jl")
@@ -50,6 +52,7 @@ include("HeadDetection.jl")
 include("HeadConfigurations.jl")
 include("SeriesSimulation.jl")
 include("SaveLoad.jl")
+include("SeriesPresets.jl")
 
 
 export ModelSpec

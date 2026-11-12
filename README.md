@@ -47,6 +47,9 @@ condition with the current parameters and panels.
 2. Open **Series mode**. Pick a preset or add perturbations to the selected
    panel. For each panel, choose **Current state** to start from its live
    fields, or **Preset** when the preset supplies initial values.
+   **Save preset** stores the perturbations of the selected panel as a preset
+   of the model, and **Delete preset** removes the file of the selected
+   preset after you confirm. Saved presets appear in the list after a restart.
 3. Set **Number of runs** and click **Start series**. Each start takes a fresh
    snapshot of the setup. The app draws new perturbations for each run,
    checks for a steady state and tallies head counts, locations and
@@ -87,7 +90,8 @@ Put series presets in TOML files beside the model. The
 [Rho profile preset](Models/GiererMeinhardt/rho/left_center_right.toml) shows
 how to specify a description, constant `[initial_values]` and one
 `[[perturbations]]` entry per bump. In **Preset** mode, variables omitted
-from `[initial_values]` keep their live values.
+from `[initial_values]` keep their live values. **Save preset** in the series
+window writes files in the same format, named after the preset.
 
 For spatial profiles, see the [Rho profile model](Models/GiererMeinhardt/rho/model.jl).
 A profile set groups functions of the unit grid `x` and parameters `p`. A

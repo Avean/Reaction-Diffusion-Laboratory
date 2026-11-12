@@ -91,13 +91,17 @@ Window {
     property var perturbations: JSON.parse(ui.seriesPerturbationsJson)
     property var presets: JSON.parse(ui.seriesPresetsJson)
     // ui.seriesSelectedPreset follows the selected panel, so this does too.
-    property string selectedPresetDescription: {
+    property var selectedPreset: {
         for (const preset of presets) {
             if (preset.key === ui.seriesSelectedPreset)
-                return preset.description || ""
+                return preset
         }
-        return ""
+        return null
     }
+    property string selectedPresetDescription: selectedPreset ? (selectedPreset.description || "") : ""
+    // A preset read from a file, which Delete preset can remove; not None or Custom.
+    readonly property bool selectedPresetIsFile: selectedPreset !== null &&
+                                                 (selectedPreset.file || "").length > 0
     property var results: {
         try {
             return JSON.parse(ui.seriesResultsJson)
@@ -482,6 +486,44 @@ Window {
                                     wrapMode: Text.WordWrap
                                 }
 
+                                // Presets are TOML files beside the model, so
+                                // a saved one is there after a restart too.
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Item { Layout.fillWidth: true }
+
+                                    TileButton {
+                                        dark: false
+                                        text: "Save preset"
+                                        enabled: (seriesWindow.panelPerturbationCounts[ui.seriesSelectedSegment - 1] || 0) > 0
+                                        onClicked: savePresetDialog.open()
+
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Save the perturbations of panel " + ui.seriesSelectedSegment +
+                                                      " as a preset of this model"
+                                    }
+
+                                    TileButton {
+                                        dark: false
+                                        text: "Delete preset"
+                                        enabled: seriesWindow.selectedPresetIsFile
+                                        onClicked: {
+                                            deletePresetDialog.presetKey = seriesWindow.selectedPreset.key
+                                            deletePresetDialog.message =
+                                                "Delete the preset “" + seriesWindow.selectedPreset.name +
+                                                "”? Its file " + seriesWindow.selectedPreset.file +
+                                                " is removed from disk, which cannot be undone. Panels that use" +
+                                                " it keep their perturbations as Custom."
+                                            deletePresetDialog.open()
+                                        }
+
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Delete the file of the selected preset"
+                                    }
+                                }
+
                                 // Without initial values in the preset there is
                                 // only the live state to start from.
                                 RowLayout {
@@ -797,6 +839,46 @@ Window {
         id: saveSeriesDialog
         title: "Save series"
         onConfirmed: name => Julia.saveSeries(name)
+    }
+
+    // Save preset asks again before it replaces an existing file.
+    SavePresetDialog {
+        id: savePresetDialog
+        subject: "Saves the perturbations of panel " + ui.seriesSelectedSegment +
+                 (ui.seriesUsePresetInitial ? " and its preset initial values" : "") +
+                 " as a preset of " + ui.modelName + "."
+        onConfirmed: (name, description) => {
+            const target = JSON.parse(Julia.seriesPresetTargetJson(name))
+            if (target.exists) {
+                replacePresetDialog.pendingName = name
+                replacePresetDialog.pendingDescription = description
+                replacePresetDialog.message = "The file " + target.file +
+                    " already exists. Replace it with the perturbations of panel " +
+                    ui.seriesSelectedSegment + "?"
+                replacePresetDialog.open()
+            } else {
+                Julia.saveSeriesPreset(name, description, false)
+            }
+        }
+    }
+
+    ConfirmDialog {
+        id: replacePresetDialog
+        property string pendingName: ""
+        property string pendingDescription: ""
+        title: "Replace preset"
+        confirmText: "Replace"
+        confirmTone: "warning"
+        onConfirmed: Julia.saveSeriesPreset(pendingName, pendingDescription, true)
+    }
+
+    ConfirmDialog {
+        id: deletePresetDialog
+        property string presetKey: ""
+        title: "Delete preset"
+        confirmText: "Delete"
+        confirmTone: "danger"
+        onConfirmed: Julia.deleteSeriesPreset(presetKey)
     }
 
     // Short confirmation (e.g. after Save series) under the header bar.

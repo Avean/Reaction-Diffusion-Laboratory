@@ -140,6 +140,52 @@ function drive_application()
             sets = c.app.sim.model.spatial_profile_sets
             push!(GUI["sidebar_profiles"], first(sets[c.bindings.active_profile_set[]]))
         end
+
+        # Save preset and Delete preset of the series window, into a scratch
+        # folder instead of the model folder.
+        Q.select_model!(c, "GiererMeinhardt/rho")
+        check_message(c, "Model selection for presets")
+        Q.set_series_mode!(c, true)
+        check_message(c, "Series mode for presets")
+        Q.select_series_preset!(c, "three_wounds_narrow.toml")
+        check_message(c, "Series preset for Save preset")
+        folder = mkpath(joinpath(SCRATCH, "presets"))
+        name = "GUI ends"
+        before = Q.JSON.parse(Q.series_preset_target_json(c, name; directory = folder))
+        Q.save_series_preset!(c, name, "Saved by the test", false; directory = folder)
+        check_message(c, "Save preset")
+        path = joinpath(folder, "gui_ends.toml")
+        saved = Q.RD.load_series_preset(path, "GiererMeinhardt/rho")
+        panel = filter(p -> p.segment == 1, c.series.perturbations)
+        varnames = c.app.simulations[1].model.varnames
+        after = Q.JSON.parse(Q.series_preset_target_json(c, name; directory = folder))
+        listed = Q.JSON.parse(c.bindings.series_presets_json[])
+        GUI["preset_saved"] = (
+            target = (before["exists"], after["exists"], endswith(before["file"], "/gui_ends.toml")),
+            selected = c.bindings.series_selected_preset[],
+            listed = any(entry -> entry["key"] == "gui_ends.toml", listed),
+            values = [(p.variable_name, p.position_fraction, p.width_min_fraction, p.width_max_fraction,
+                       p.height_min, p.height_max) for p in saved.perturbations],
+            panel = [(varnames[p.variable], p.position, p.width_min, p.width_max,
+                      p.height_min, p.height_max) for p in panel],
+        )
+        Q.save_series_preset!(c, name, "Not saved", false; directory = folder)
+        GUI["preset_refused"] = !isempty(c.bindings.message[]) &&
+                                Q.RD.load_series_preset(path, "GiererMeinhardt/rho").description == "Saved by the test"
+        Q.save_series_preset!(c, name, "Replaced", true; directory = folder)
+        check_message(c, "Replace preset")
+        GUI["preset_replaced"] = Q.RD.load_series_preset(path, "GiererMeinhardt/rho").description
+        Q.delete_series_preset!(c, "gui_ends.toml")
+        check_message(c, "Delete preset")
+        listed = Q.JSON.parse(c.bindings.series_presets_json[])
+        GUI["preset_deleted"] = (
+            file = isfile(path),
+            listed = any(entry -> entry["key"] == "gui_ends.toml", listed),
+            selected = c.bindings.series_selected_preset[],
+            kept = count(p -> p.segment == 1, c.series.perturbations),
+        )
+        Q.set_series_mode!(c, false)
+        check_message(c, "Leaving series mode after presets")
     catch error
         GUI["error"] = sprint(showerror, error, catch_backtrace())
     finally
@@ -190,6 +236,16 @@ end
     legacy = make_state(:gierer_meinhardt_rho; N = 300, params = (ρsplit = 0.3,), rho = "ExpHeadFoot")
     @test GUI["two_piece_profile"] ≈ rho_values(legacy)
     @test GUI["sidebar_profiles"] == ["ExpHeadFoot", "Exponential", "Gauss"]
+
+    saved = GUI["preset_saved"]
+    @test saved.target == (false, true, true)
+    @test saved.selected == "gui_ends.toml"
+    @test saved.listed
+    @test saved.values == saved.panel
+    @test length(saved.values) == 3
+    @test GUI["preset_refused"]
+    @test GUI["preset_replaced"] == "Replaced"
+    @test GUI["preset_deleted"] == (file = false, listed = false, selected = "custom", kept = 3)
 
     catalog = Q.JSON.parse(Q.model_catalog_json(Q.RD.MODEL_REGISTRY))
     profile_sets = Dict(entry["key"] => entry["profileSets"] for family in catalog for entry in family["models"])

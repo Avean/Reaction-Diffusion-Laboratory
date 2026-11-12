@@ -1,5 +1,6 @@
 singleton Theme 1.0 Theme.qml
 BistableButton 1.0 BistableButton.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
 ControlSection 1.0 ControlSection.qml
 DrawerHeader 1.0 DrawerHeader.qml
 FieldCard 1.0 FieldCard.qml
@@ -7,6 +8,7 @@ LoadDialog 1.0 LoadDialog.qml
 NoticeToast 1.0 NoticeToast.qml
 PanelSelector 1.0 PanelSelector.qml
 SaveNameDialog 1.0 SaveNameDialog.qml
+SavePresetDialog 1.0 SavePresetDialog.qml
 SaveProfileChart 1.0 SaveProfileChart.qml
 SeriesBarChart 1.0 SeriesBarChart.qml
 SeriesConfigurationChart 1.0 SeriesConfigurationChart.qml

@@ -15,7 +15,6 @@ using Logging
 using QML
 using QMLMakie
 using Printf
-using TOML
 
 # Qt settings, applied before the first window exists. On Windows Qt keeps its
 # own copy of the environment from the moment it starts, and QML is loaded
@@ -54,7 +53,21 @@ import ..ReactionDiffusionApp:
     sorted_json_object,
     write_save_file
 
-include("SeriesPresets.jl")
+# The preset files are read and written by the core (SeriesPresets.jl); the
+# series window keeps the loaded presets in SERIES_PRESETS.
+import ..ReactionDiffusionApp:
+    SeriesPresetDefinition,
+    SeriesPresetPerturbation,
+    delete_series_preset_file,
+    load_series_presets,
+    register_series_preset!,
+    series_preset_directory,
+    series_preset_display_path,
+    series_preset_file_name,
+    series_preset_name,
+    series_presets_json,
+    unregister_series_preset!,
+    write_series_preset
 
 const QML_FILE = normpath(joinpath(@__DIR__, "..", "qml", "Main.qml"))
 const SERIES_PRESETS = load_series_presets(RD.MODEL_DIR)
@@ -1881,6 +1894,124 @@ function set_series_use_preset_initial!(controller::QMLController, use_preset)
 end
 
 
+function series_preset_panel_definitions(controller::QMLController, segment::Int)
+    # The perturbations of a panel as preset entries: the variable by name,
+    # the position and widths as fractions of the panel length.
+    model = controller.app.simulations[segment].model
+    return SeriesPresetPerturbation[
+        SeriesPresetPerturbation(
+            model.varnames[perturbation.variable],
+            perturbation.position,
+            perturbation.width_min,
+            perturbation.width_max,
+            perturbation.height_min,
+            perturbation.height_max,
+        )
+        for perturbation in controller.series.perturbations
+        if perturbation.segment == segment
+    ]
+end
+
+
+function series_preset_folder(
+    controller::QMLController,
+    directory::Union{Nothing, AbstractString},
+)
+    # The folder of the active model, beside its model.jl, unless a test
+    # passes another one.
+    directory === nothing || return String(directory)
+    return series_preset_directory(controller.bindings.active_model_key[])
+end
+
+
+function series_preset_target_json(
+    controller::QMLController,
+    name_value;
+    directory::Union{Nothing, AbstractString} = nothing,
+)
+    # For the Save preset dialog: the file a save under this name writes and
+    # whether one is there already; no file while the name is not usable.
+    path = try
+        joinpath(
+            series_preset_folder(controller, directory),
+            series_preset_file_name(series_preset_name(String(name_value))),
+        )
+    catch
+        nothing
+    end
+    path === nothing && return "{\"file\":\"\",\"exists\":false}"
+    return "{\"file\":" * json_string(series_preset_display_path(path)) *
+           ",\"exists\":" * string(ispath(path)) * "}"
+end
+
+
+function save_series_preset!(
+    controller::QMLController,
+    name_value,
+    description_value,
+    overwrite = false;
+    directory::Union{Nothing, AbstractString} = nothing,
+)
+    # Writes the perturbations of the selected panel, with the initial values
+    # a Start applies to it, as a preset of the active model and names that
+    # preset in the panel's selector. The panel itself stays as it is. An
+    # existing file is replaced only with overwrite.
+    return guarded_action(controller, "Saving the preset failed") do
+        series = controller.series
+        series.running[] && error("Stop the series before saving a preset.")
+        ensure_panel_preset_state!(controller)
+        segment = clamp(series.selected_segment, 1, length(controller.app.simulations))
+        perturbations = series_preset_panel_definitions(controller, segment)
+        isempty(perturbations) &&
+            error("Add at least one perturbation to panel $segment before saving it as a preset.")
+        model_key = controller.bindings.active_model_key[]
+        preset = write_series_preset(
+            series_preset_folder(controller, directory),
+            model_key,
+            String(name_value),
+            String(description_value),
+            applied_panel_initial_values(series, segment),
+            perturbations;
+            overwrite = Bool(overwrite),
+        )
+        register_series_preset!(SERIES_PRESETS, preset)
+
+        # Other panels loaded from a replaced file no longer match it.
+        for other in eachindex(series.panel_presets)
+            other != segment && series.panel_presets[other] == preset.key &&
+                mark_panel_custom!(controller, other)
+        end
+
+        series.panel_presets[segment] = preset.key
+        controller.bindings.notice[] = "Saved preset to " * series_preset_display_path(preset.path)
+        refresh_series_bindings!(controller)
+    end
+end
+
+
+function delete_series_preset!(controller::QMLController, preset_key_value)
+    # Removes the preset file from disk. Panels that used the preset keep
+    # their perturbations and initial values, now as their custom set.
+    return guarded_action(controller, "Deleting the preset failed") do
+        series = controller.series
+        series.running[] && error("Stop the series before deleting a preset.")
+        ensure_panel_preset_state!(controller)
+        preset_key = String(preset_key_value)
+        preset = series_preset_by_key(controller.bindings.active_model_key[], preset_key)
+        preset === nothing && error("This Series preset is not available for the selected model.")
+        delete_series_preset_file(preset)
+        unregister_series_preset!(SERIES_PRESETS, preset)
+
+        for segment in eachindex(series.panel_presets)
+            series.panel_presets[segment] == preset_key && mark_panel_custom!(controller, segment)
+        end
+
+        controller.bindings.notice[] = "Deleted preset " * preset.name
+        refresh_series_bindings!(controller)
+    end
+end
+
+
 function add_series_perturbation!(controller::QMLController)
     series = controller.series
     series.running[] && return nothing
@@ -3331,6 +3462,16 @@ function register_qml_functions!(controller::QMLController)
     )
     QML.qmlfunction("setSeriesPosition", value -> set_series_position!(controller, value))
     QML.qmlfunction("selectSeriesPreset", value -> select_series_preset!(controller, value))
+    QML.qmlfunction(
+        "seriesPresetTargetJson",
+        name -> series_preset_target_json(controller, name),
+    )
+    QML.qmlfunction(
+        "saveSeriesPreset",
+        (name, description, overwrite) ->
+            save_series_preset!(controller, name, description, overwrite),
+    )
+    QML.qmlfunction("deleteSeriesPreset", key -> delete_series_preset!(controller, key))
     QML.qmlfunction(
         "addSeriesPerturbation",
         guarded(() -> add_series_perturbation!(controller), "Adding a perturbation failed"),
