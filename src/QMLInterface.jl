@@ -2090,19 +2090,26 @@ function update_series_perturbation!(controller::QMLController, id_value, field_
     elseif field == "position"
         edited.position = parse_series_position(value)
     elseif field == "widthMin"
+        # A minimum typed above the maximum raises the maximum to it, and a
+        # maximum typed below the minimum lowers the minimum, so a range can
+        # be entered in either order.
         edited.width_min = parse_series_width(value, "Width minimum")
+        edited.width_max = max(edited.width_max, edited.width_min)
     elseif field == "widthMax"
         edited.width_max = parse_series_width(value, "Width maximum")
+        edited.width_min = min(edited.width_min, edited.width_max)
     elseif field == "heightMin"
         edited.height_min = round(
             parse_finite_qml_number(value, "Height minimum");
             digits = SERIES_HEIGHT_DIGITS,
         )
+        edited.height_max = max(edited.height_max, edited.height_min)
     elseif field == "heightMax"
         edited.height_max = round(
             parse_finite_qml_number(value, "Height maximum");
             digits = SERIES_HEIGHT_DIGITS,
         )
+        edited.height_min = min(edited.height_min, edited.height_max)
     else
         error("Unknown series-perturbation field: $field")
     end

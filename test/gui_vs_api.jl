@@ -184,6 +184,17 @@ function drive_application()
             selected = c.bindings.series_selected_preset[],
             kept = count(p -> p.segment == 1, c.series.perturbations),
         )
+
+        # A minimum above the maximum raises the maximum, a maximum below the
+        # minimum lowers the minimum (the fields of a perturbation card).
+        edited = first(filter(p -> p.segment == 1, c.series.perturbations))
+        ranges = Tuple{Float64, Float64, Float64, Float64}[]
+        for (field, value) in (("heightMin", "3"), ("heightMax", "1"), ("widthMin", "0.5"), ("widthMax", "0.02"))
+            Q.update_series_perturbation!(c, edited.id, field, value)
+            check_message(c, "Perturbation field $field")
+            push!(ranges, (edited.width_min, edited.width_max, edited.height_min, edited.height_max))
+        end
+        GUI["ranges"] = ranges
         Q.set_series_mode!(c, false)
         check_message(c, "Leaving series mode after presets")
     catch error
@@ -246,6 +257,13 @@ end
     @test GUI["preset_refused"]
     @test GUI["preset_replaced"] == "Replaced"
     @test GUI["preset_deleted"] == (file = false, listed = false, selected = "custom", kept = 3)
+    # Starting from widths 0.03–0.06 and heights 1.6–2.6 (three_wounds_narrow).
+    @test GUI["ranges"] == [
+        (0.03, 0.06, 3.0, 3.0),
+        (0.03, 0.06, 1.0, 1.0),
+        (0.5, 0.5, 1.0, 1.0),
+        (0.02, 0.02, 1.0, 1.0),
+    ]
 
     catalog = Q.JSON.parse(Q.model_catalog_json(Q.RD.MODEL_REGISTRY))
     profile_sets = Dict(entry["key"] => entry["profileSets"] for family in catalog for entry in family["models"])

@@ -88,6 +88,14 @@ Rectangle {
         enabled: tile.enabled
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: tile.clicked()
+        onClicked: {
+            // A tile takes no focus by itself, so a value typed in a field
+            // would not count yet. End that edit first, as Tab or Enter
+            // would; a value the field refuses stays there, in red.
+            const focused = tile.Window.activeFocusItem
+            if (focused && focused !== tile && focused.acceptableInput === true)
+                tile.forceActiveFocus()
+            tile.clicked()
+        }
     }
 }
