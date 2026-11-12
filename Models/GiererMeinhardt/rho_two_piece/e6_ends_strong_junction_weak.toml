@@ -1,0 +1,30 @@
+name = "E6: ends 1.6–2.6, junction 0.5–0.8"
+description = "Wounds for E6 ring doublets (settings of 2026-11-11): u at both ends (width 3–6% of the panel, height 1.6–2.6) and at the junction (width 6–12%, height 0.5–0.8). Start from u = v = 0. Used with profile SD_variant_B, ρsplit = 0.5, domain 2.39."
+
+[initial_values]
+u = 0.0
+v = 0.0
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 1.6
+height_max = 2.6
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.06
+width_max_fraction = 0.12
+height_min = 0.5
+height_max = 0.8
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 1.6
+height_max = 2.6

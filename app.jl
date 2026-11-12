@@ -62,7 +62,7 @@ try
     StartupSplash.startup_stage!(_rd_startup_splash, :compile)
     Base.invokelatest(
         ReactionDiffusionQML.run_qml_app;
-        N = 300,
+        N = 1000,
         startup_started_ns = _rd_startup_started_ns,
         startup_splash = _rd_startup_splash,
         compile_started_ns = time_ns(),

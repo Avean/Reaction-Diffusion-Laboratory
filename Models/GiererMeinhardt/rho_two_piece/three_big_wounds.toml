@@ -1,0 +1,30 @@
+name = "Three big wounds"
+description = "For decreased source density"
+
+[initial_values]
+u = 0.0
+v = 0.0
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 2.0
+height_max = 5.0
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.06
+width_max_fraction = 0.12
+height_min = 0.6
+height_max = 1.6
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.03
+width_max_fraction = 0.06
+height_min = 2.0
+height_max = 5.0
