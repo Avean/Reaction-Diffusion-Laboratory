@@ -24,9 +24,13 @@ RDModel(
     id = :gierer_meinhardt_source,
 
     display_name = "Source",
-    description = "A Gierer-Meinhardt variant with an additional source field. The source couples external production into the activator-inhibitor dynamics.",
+    description = "A Gierer-Meinhardt variant with an additional source field. The source couples external production into the activator-inhibitor dynamics. Freeze SD stops the source field (frozen = 1), so it acts as a fixed profile ρ(x).",
 
     variables = (:u, :v, :sd),
+
+    # Freeze SD (parameter frozen = 1) keeps sd at its current values. Its
+    # equation is divided by τ, so Cut and run measures its rate times τ.
+    freezable = (sd = :τ,),
 
     parameters = (
         
@@ -71,12 +75,12 @@ RDModel(
         sd_base = @. p.ρ0 + p.ρ1 * x
         H = div(length(x), 2)
 
-        # profile = :Constant
+        profile = :Constant
         # profile = :FootHead
         # profile = :HeadFoot
         # profile = :FootHeadReverse
         # profile = :HeadFootReverse
-        profile = :ZigZag
+        # profile = :ZigZag
 
 
         if profile == :FootHead

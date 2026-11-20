@@ -129,6 +129,9 @@ mutable struct QMLBindings
     simulation_saves_json::Observable{String}
     simulation_save_details_json::Observable{String}
     # The Load window: the saves of the active model and the selected one.
+    cut_run_running::Observable{Bool}
+    cut_run_status::Observable{String}
+    # Cut and run of the Source tools: running, and its progress text.
 end
 
 
@@ -206,6 +209,32 @@ mutable struct SeriesController
 end
 
 
+# Cut and run of the Source tools (DoubletQML.jl): the background task that
+# runs the whole body to a stationary state, its progress and its result,
+# which refresh_qml_state! installs on the interface thread.
+mutable struct CutRunState
+    lock::ReentrantLock
+    task::Union{Nothing, Task}
+    running::Bool
+    cancel::Threads.Atomic{Bool}
+    status::String
+    result::Any
+    error::Any
+    model_id::Symbol
+end
+
+empty_cut_run_state() = CutRunState(
+    ReentrantLock(),
+    nothing,
+    false,
+    Threads.Atomic{Bool}(false),
+    "",
+    nothing,
+    nothing,
+    :none,
+)
+
+
 mutable struct QMLController
     app::RD.AppState
     plot_grid::GridLayout
@@ -229,6 +258,7 @@ mutable struct QMLController
     graphics_busy::Observable{Bool}
     close_requested::Threads.Atomic{Bool}
     first_workspace_frame_rendered::Threads.Atomic{Bool}
+    cut_run::CutRunState
 end
 
 
@@ -950,7 +980,8 @@ function model_catalog_json(registry::Dict{String, RD.ModelSpec})
             "{" *
             "\"key\":" * json_string(entry.key) * "," *
             "\"label\":" * json_string(entry.label) * "," *
-            "\"profileSets\":" * json_string_array(first.(registry[entry.key].spatial_profile_sets)) *
+            "\"profileSets\":" * json_string_array(first.(registry[entry.key].spatial_profile_sets)) * "," *
+            "\"freezable\":" * (isempty(registry[entry.key].freezable_variables) ? "false" : "true") *
             "}"
             for entry in family.models
         ]
@@ -1034,6 +1065,8 @@ end
 
 function refresh_qml_state!(controller::QMLController)
     controller.graphics_busy[] && return nothing
+    # Shows the progress of Cut and run and installs its result when it is done.
+    poll_cut_run!(controller)
 
     # A running series owns the plots and keeps graphics_busy set, so this
     # always shows the live state, also in series mode.
@@ -2474,6 +2507,7 @@ function start_series!(controller::QMLController)
     series = controller.series
     app = controller.app
     series.running[] && return nothing
+    controller.cut_run.running && error("Wait until Cut and run has finished, or stop it.")
     previous_task = series.task_ref[]
     previous_task !== nothing && !istaskdone(previous_task) && wait(previous_task)
     previous_task === nothing || finish_series_run!(controller)
@@ -2818,6 +2852,7 @@ end
 function toggle_running!(controller::QMLController)
     return guarded_action(controller, "Simulation control failed") do
         controller.series.running[] && return nothing
+        controller.cut_run.running && return nothing
         app = controller.app
 
         if app.worker_running[] || app.running[] || app.synchronization_running[]
@@ -3247,6 +3282,7 @@ end
 
 
 function shutdown!(controller::QMLController)
+    controller.cut_run.cancel[] = true
     stop_series!(controller)
     series_task = controller.series.task_ref[]
     if series_task !== nothing && series_task !== current_task() && !istaskdone(series_task)
@@ -3311,6 +3347,7 @@ end
 
 
 include("SaveLoadQML.jl")
+include("DoubletQML.jl")
 
 
 function register_qml_functions!(controller::QMLController)
@@ -3388,6 +3425,34 @@ function register_qml_functions!(controller::QMLController)
         (name, value) -> set_model_parameter_from_qml!(controller, name, value),
     )
     QML.qmlfunction("selectSpatialProfileSet", index -> select_spatial_profile_set!(controller, Int(index)))
+    # Source tools (DoubletQML.jl).
+    # Freeze SD and Cut rebuild the plots, so they run in the render function.
+    QML.qmlfunction(
+        "setSourceFrozen",
+        value -> begin
+            frozen = Bool(value)
+            enqueue_graphics_action!(
+                controller,
+                () -> set_source_frozen!(controller, frozen),
+            )
+        end,
+    )
+    QML.qmlfunction("applyHalfOperation", name -> apply_half_operation!(controller, name))
+    QML.qmlfunction(
+        "cutCenter",
+        length_text -> begin
+            text = String(length_text)
+            enqueue_graphics_action!(
+                controller,
+                () -> cut_center!(controller, text),
+            )
+        end,
+    )
+    QML.qmlfunction(
+        "cutAndRun",
+        (body_text, cut_text) -> start_cut_and_run!(controller, body_text, cut_text),
+    )
+    QML.qmlfunction("stopCutAndRun", () -> stop_cut_and_run!(controller))
     QML.qmlfunction(
         "setEquationValuesVisible",
         value -> set_equation_values_visible!(controller, value),
@@ -3581,6 +3646,8 @@ function qml_property_map(
         "domainResolution" => bindings.domain_resolution,
         "mainWindowVisible" => bindings.main_window_visible,
         "notice" => bindings.notice,
+        "cutRunRunning" => bindings.cut_run_running,
+        "cutRunStatus" => bindings.cut_run_status,
         "modelCatalogJson" => Observable(catalog_json),
         "message" => bindings.message,
         "graphicsBusy" => controller.graphics_busy,
@@ -3763,6 +3830,8 @@ function create_qml_controller(;
         Observable(RD._active_spatial_profile_set_index(simulation.params, first_model.spatial_profile_sets)),
         Observable("{\"saves\":[],\"skipped\":[]}"),
         Observable("{}"),
+        Observable(false),
+        Observable(""),
     )
     controller = QMLController(
         app,
@@ -3787,6 +3856,7 @@ function create_qml_controller(;
         Observable(false),
         Threads.Atomic{Bool}(false),
         Threads.Atomic{Bool}(false),
+        empty_cut_run_state(),
     )
     controller.series.selected_position = 0.5
     refresh_series_bindings!(controller)

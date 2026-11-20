@@ -503,10 +503,16 @@ function build_plot_panel!(
         U = solution_matrix(sim)
         x_observable = Observable(segment_display_coordinates(app, segment, 1.0))
         push!(segment_x_observables, x_observable)
+        # Frozen variables (Freeze SD) are drawn like fixed spatial profiles:
+        # red and dashed, with "(frozen)" in the title.
+        frozen_variables = frozen_variable_indices(model, sim.params)
 
         for variable in 1:model.nvars
+            frozen = variable in frozen_variables
             axis_title = if variable == 1
                 segment_status_observables[segment]
+            elseif frozen
+                model.varnames[variable] * " (frozen)"
             else
                 model.varnames[variable]
             end
@@ -525,7 +531,11 @@ function build_plot_panel!(
             y_obs = Observable(copy(U[:, variable]))
             preview_obs = Observable(fill(NaN, sim.N))
 
-            lines!(ax, x_observable, y_obs; linewidth = 2)
+            if frozen
+                lines!(ax, x_observable, y_obs; linewidth = 4, color = :red, linestyle = :dash)
+            else
+                lines!(ax, x_observable, y_obs; linewidth = 2)
+            end
             lines!(
                 ax,
                 x_observable,

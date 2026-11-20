@@ -47,6 +47,9 @@ include("PlotPanel.jl")
 include("UIRuntime.jl")
 include("PartitionControlPanel.jl")
 
+# AppState-level Source tools: Freeze SD, halves, Cut, Cut and run.
+include("DoubletApp.jl")
+
 
 export ModelSpec
 export RDModel

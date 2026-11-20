@@ -2012,13 +2012,17 @@ end
 # ============================================================
 
 """
-    run_single(spec::SingleSpec; times = spec.times, out = RESULTS_DIR) -> NamedTuple
+    run_single(spec::SingleSpec; times = spec.times, out = RESULTS_DIR, write_files = true) -> NamedTuple
 
 One realization with the profiles of all variables and ρ written at the
 requested `times` (solver time since the wounds; 0 is right after them) to
 profiles.csv and fields/t_XXX.csv; with `until_steady`, run on to a
 stationary state (outcomes.csv, fields/final.csv). The solver stops exactly
 at each requested time, so its steps differ from those of a series run.
+
+With `write_files = false` nothing is written (no output directory, no git
+calls for meta.json) and `dir` is `nothing`; the snapshots, outcome and state
+are the same as with files.
 """
 function run_single(
     spec::SingleSpec;
@@ -2026,11 +2030,12 @@ function run_single(
     out::AbstractString = RESULTS_DIR,
     mkl_threads = solver_threads(),
     verbose::Bool = true,
+    write_files::Bool = true,
 )
-    return with_solver_threads(() -> run_single_inner(spec, times, out, verbose), mkl_threads)
+    return with_solver_threads(() -> run_single_inner(spec, times, out, verbose, write_files), mkl_threads)
 end
 
-function run_single_inner(spec::SingleSpec, times, out::AbstractString, verbose::Bool)
+function run_single_inner(spec::SingleSpec, times, out::AbstractString, verbose::Bool, write_files::Bool = true)
     started = Dates.now()
     st = spec.start
     model = model_of(st)
@@ -2058,16 +2063,19 @@ function run_single_inner(spec::SingleSpec, times, out::AbstractString, verbose:
         C.apply_series_perturbations!([sim], perturbations, run_rng, settings)
     end
 
-    dir = new_output_dir(out, spec.experiment, spec.name, started)
-    write_spec(joinpath(dir, "spec.toml"), spec)
-    meta = meta_entry(spec, st, settings, "single", started)
-    meta["run"] = spec.run
-    meta["times"] = record_times
-    meta["wounds"] = wound_rows
-    meta["redraw_profiles"] = redraw
-    write_json(joinpath(dir, "meta.json"), meta)
-    mkpath(joinpath(dir, "fields"))
-    write_fields(joinpath(dir, "fields", "initial.csv"), st, copy(st.sim.integrator_ref[].u), profile_values(st.sim))
+    dir = nothing
+    if write_files
+        dir = new_output_dir(out, spec.experiment, spec.name, started)
+        write_spec(joinpath(dir, "spec.toml"), spec)
+        meta = meta_entry(spec, st, settings, "single", started)
+        meta["run"] = spec.run
+        meta["times"] = record_times
+        meta["wounds"] = wound_rows
+        meta["redraw_profiles"] = redraw
+        write_json(joinpath(dir, "meta.json"), meta)
+        mkpath(joinpath(dir, "fields"))
+        write_fields(joinpath(dir, "fields", "initial.csv"), st, copy(st.sim.integrator_ref[].u), profile_values(st.sim))
+    end
 
     run_state = RDState(sim, st.model_key, st.smap, st.recipe, st.info)
     profiles = profile_values(sim)
@@ -2085,34 +2093,38 @@ function run_single_inner(spec::SingleSpec, times, out::AbstractString, verbose:
         verbose && @printf("  t = %.6g recorded (%d steps)\n", integrator.t, sim.step_counter[])
     end
 
-    var_names = model.varnames
-    profile_names = sort(collect(keys(profiles)))
-    p = panel_fractions(run_state)
-    pos = positions(run_state)
-    s = body_coordinates(run_state)
-    write_csv(
-        joinpath(dir, "profiles.csv"),
-        vcat(["time", "x", "position", "s"], var_names, profile_names),
-        (
-            vcat(Any[t, p[i], pos[i], s[i]],
-                 Any[reshape(y, sim.N, model.nvars)[i, j] for j in 1:model.nvars],
-                 Any[profiles[name][i] for name in profile_names])
-            for (t, y) in snapshots for i in 1:sim.N
-        ),
-    )
-    for (index, (t, y)) in enumerate(snapshots)
-        write_fields(joinpath(dir, "fields", @sprintf("t_%03d.csv", index)), run_state, y, profiles)
+    if write_files
+        var_names = model.varnames
+        profile_names = sort(collect(keys(profiles)))
+        p = panel_fractions(run_state)
+        pos = positions(run_state)
+        s = body_coordinates(run_state)
+        write_csv(
+            joinpath(dir, "profiles.csv"),
+            vcat(["time", "x", "position", "s"], var_names, profile_names),
+            (
+                vcat(Any[t, p[i], pos[i], s[i]],
+                     Any[reshape(y, sim.N, model.nvars)[i, j] for j in 1:model.nvars],
+                     Any[profiles[name][i] for name in profile_names])
+                for (t, y) in snapshots for i in 1:sim.N
+            ),
+        )
+        for (index, (t, y)) in enumerate(snapshots)
+            write_fields(joinpath(dir, "fields", @sprintf("t_%03d.csv", index)), run_state, y, profiles)
+        end
     end
 
     outcome = nothing
     if spec.until_steady
         outcome = C.run_series_panel!(sim, settings, 0)
-        write_fields(joinpath(dir, "fields", "final.csv"), run_state, outcome.final_snapshot.y, profiles)
-        write_csv(
-            joinpath(dir, "outcomes.csv"),
-            OUTCOME_HEADER,
-            [outcome_row(spec.run, spec.seed, outcome, run_state, time() - t0)],
-        )
+        if write_files
+            write_fields(joinpath(dir, "fields", "final.csv"), run_state, outcome.final_snapshot.y, profiles)
+            write_csv(
+                joinpath(dir, "outcomes.csv"),
+                OUTCOME_HEADER,
+                [outcome_row(spec.run, spec.seed, outcome, run_state, time() - t0)],
+            )
+        end
         verbose && @printf("  %s at t = %.6g, %d heads\n", outcome.converged ? "stationary" : "NOT stationary",
             outcome.time, length(outcome.heads))
     end

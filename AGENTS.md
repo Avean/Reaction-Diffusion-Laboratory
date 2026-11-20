@@ -12,8 +12,10 @@ scripting experiments.
   The interface in `src/QMLInterface.jl` accesses them through `RD`.
 - Put window code in the application layer. This includes
   `ReactionDiffusionApp.jl`, `AppTypes.jl`, `DomainPartitionApp.jl`,
-  `PlotPanel.jl`, `PerturbationPanel.jl`, `UIRuntime.jl`, `QMLInterface.jl` and
-  `SaveLoadQML.jl`.
+  `PlotPanel.jl`, `PerturbationPanel.jl`, `UIRuntime.jl`, `DoubletApp.jl`,
+  `QMLInterface.jl`, `SaveLoadQML.jl` and `DoubletQML.jl`.
+- The Source tools (Freeze SD, Cut, Cut and run, half operations) keep their
+  window-free logic in the core file `src/Doublet.jl`.
 
 ## Verification
 

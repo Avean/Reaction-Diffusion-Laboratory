@@ -1,0 +1,25 @@
+name = "V2"
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.7
+height_max = 3.2
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.04
+width_max_fraction = 0.04
+height_min = 3.0
+height_max = 3.2
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.7
+height_max = 3.2

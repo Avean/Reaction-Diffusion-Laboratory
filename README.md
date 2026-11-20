@@ -55,6 +55,17 @@ condition with the current parameters and panels.
    checks for a steady state and tallies head counts, locations and
    configurations.
 
+## Freeze and cut the source density
+
+The Gierer–Meinhardt **Source** model has extra controls in **Models**.
+
+- **Freeze SD** stops the source density `sd`: its reaction and diffusion are zero, so it acts as a fixed profile, drawn red and dashed.
+- **Cut** keeps a piece of the given length from the middle of the domain. The domain becomes `[0, length]` and keeps its grid points; the length snaps to an even number of points, so the two halves match exactly.
+- **Cut and run** starts the whole body of the given length from `u = v = 0` with a large bump of `u` at the left end, which grows into a single head. It runs to a steady state with the series check (tolerance and limits from the series window; the rate of `sd` counts times `τ`, so `sd` must reach its equilibrium), then cuts the piece and freezes SD. It needs Neumann boundary conditions.
+- **Swap halves**, **Flip left**, **Flip right**, **Copy left → right** and **Copy right → left** rearrange `u`, `v` and `sd` together. Each click acts on the current state, so **Save** first and use **Load** to go back.
+
+The series presets of **Rho profile 2 piece** are also available for this model.
+
 ## Save your work
 
 | Control | What it saves |
@@ -84,7 +95,10 @@ The app discovers `Models/<family>/<model>/model.jl` at startup. Use the
 [basic model](Models/GiererMeinhardt/basic/model.jl) as a template for an
 `RDModel(...)` definition. Choose a unique, stable `id` because it identifies
 the model's save folder. The solver provides the physical domain length
-through `p.domain_length`.
+through `p.domain_length`. List slow variables in `freezable = (:sd,)` to get
+the parameter `frozen` and the **Freeze SD** control; `freezable = (sd = :τ,)`
+also names the time scale the variable's equation is divided by, so that
+**Cut and run** waits until it reaches its equilibrium.
 
 Put series presets in TOML files beside the model. The
 [Rho profile preset](Models/GiererMeinhardt/rho/left_center_right.toml) shows

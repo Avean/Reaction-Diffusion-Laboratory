@@ -68,6 +68,18 @@ Base.@kwdef struct ModelSpec
 
     latex_equations::Vector{String} = String[]
     # Optional LaTeX strings describing the equations, for display in the UI.
+
+    freezable_variables::Vector{Int} = Int[]
+    # Variables that the parameter `frozen` (FROZEN_PARAM in ModelDSL.jl)
+    # stops: while it is 1, their reaction and diffusion are zero and they
+    # keep their values. Declared with RDModel(...; freezable = (:sd,)).
+
+    freezable_time_scales::Vector{Union{Nothing, Symbol, Float64}} =
+        Union{Nothing, Symbol, Float64}[]
+    # For every freezable variable, in the same order: the time scale its
+    # equation is divided by (a parameter name such as :τ, a number, or
+    # nothing for 1), declared with freezable = (sd = :τ,). Cut and run
+    # weights the variable's rate by it in the stationarity check.
 end
 
 

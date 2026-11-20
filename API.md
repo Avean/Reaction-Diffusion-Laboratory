@@ -224,6 +224,13 @@ after the wounds. `result.snapshots` holds the `(t, y)` pairs, and
 `result.outcome` holds the final result when `until_steady` is enabled.
 Recording at specified times adds solver stops, which can affect final values.
 
+`run_single(spec; write_files = false)` writes nothing: no output directory,
+no files and no git calls for `meta.json`. `result.dir` is then `nothing`;
+the snapshots, outcome and state are identical to a run with files. Use it
+for many realizations whose snapshots the script reads from `result` itself:
+writing the files takes most of the time of a short run, and parallel threads
+wait on the disk.
+
 ### Reproduce an experiment
 
 `load_spec(path)` rebuilds a saved input from `spec.toml` for inspection.

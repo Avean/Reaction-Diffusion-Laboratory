@@ -31,9 +31,52 @@ const DIFFUSION_SCALE_PARAM = :__diffusion_scale
 # range: p.domain_length. It is not a model parameter and cannot be edited.
 const DOMAIN_LENGTH_FIELD = :domain_length
 
+# A model that declares freezable variables, RDModel(...; freezable = (:sd,)),
+# gets this parameter (default 0). While it is 1 (any value above 1/2), the
+# reaction and diffusion of those variables are zero: they keep their values,
+# for example a slow source density frozen at its steady state. It is an
+# ordinary model parameter, so saves, series and the API carry it.
+const FROZEN_PARAM = :frozen
+
 
 function diffusion_scale(p_dict::AbstractDict{Symbol})
     return Float64(get(p_dict, DIFFUSION_SCALE_PARAM, 1.0))
+end
+
+
+"Whether the freezable variables of a model are frozen by `params`."
+function variables_frozen(model::ModelSpec, params::AbstractDict{Symbol})
+    isempty(model.freezable_variables) && return false
+    return Float64(get(params, FROZEN_PARAM, 0.0)) > 0.5
+end
+
+
+"Indices of the variables that `params` freeze (empty when none are)."
+function frozen_variable_indices(model::ModelSpec, params::AbstractDict{Symbol})
+    return variables_frozen(model, params) ? copy(model.freezable_variables) : Int[]
+end
+
+
+"""
+    freezable_rate_weights(model, params) -> Vector{Float64}
+
+Weights of the stationarity check of Cut and run, one per variable: 1, and
+for a freezable variable its declared time scale (freezable = (sd = :τ,)
+gives p.τ). The rate of a variable whose equation is divided by τ is then
+measured in the units of its own equation, so a slow source density must be
+close to its equilibrium, not only slow, to count as stationary.
+"""
+function freezable_rate_weights(model::ModelSpec, params::AbstractDict{Symbol})
+    weights = ones(Float64, model.nvars)
+
+    for (index, scale) in zip(model.freezable_variables, model.freezable_time_scales)
+        value = scale === nothing ? 1.0 :
+                scale isa Symbol ? Float64(get(params, scale, 1.0)) :
+                Float64(scale)
+        isfinite(value) && value > 0.0 && (weights[index] = value)
+    end
+
+    return weights
 end
 
 
@@ -726,7 +769,8 @@ function RDModel(;
     diffusion = NamedTuple(),
     default_boundary_condition::Union{Nothing, Symbol} = nothing,
     spatial_profiles = NamedTuple(),
-    latex_equations = String[],    
+    latex_equations = String[],
+    freezable = (),
 )
     vars = _normalize_variables(variables)
     var_index = _make_variable_index(vars)
@@ -739,6 +783,41 @@ function RDModel(;
 
     DOMAIN_LENGTH_FIELD in param_names &&
         error("Parameter name $(DOMAIN_LENGTH_FIELD) is reserved: models read the domain length as p.$(DOMAIN_LENGTH_FIELD).")
+
+    # Freezable variables: the model gets the parameter `frozen` (default 0),
+    # which stops their reaction and diffusion while it is 1. Either a tuple
+    # of names, freezable = (:sd,), or names with the time scale their
+    # equation is divided by, freezable = (sd = :τ,) (a parameter or a number).
+    freezable_entries = Pair{Int, Union{Nothing, Symbol, Float64}}[]
+    freezable_list = freezable isa NamedTuple ?
+        collect(pairs(freezable)) :
+        [entry => nothing for entry in freezable]
+    for (entry, time_scale) in freezable_list
+        var = Symbol(entry)
+        haskey(var_index, var) || error("Freezable variable $(var) is not a model variable.")
+        scale = if time_scale === nothing
+            nothing
+        elseif time_scale isa Symbol
+            time_scale in param_names ||
+                error("Time scale $(time_scale) of freezable variable $(var) is not a model parameter.")
+            time_scale
+        elseif time_scale isa Real
+            Float64(time_scale)
+        else
+            error("The time scale of freezable variable $(var) must be a parameter name or a number.")
+        end
+        any(e -> first(e) == var_index[var], freezable_entries) ||
+            push!(freezable_entries, var_index[var] => scale)
+    end
+    sort!(freezable_entries; by = first)
+    freezable_indices = Int[first(e) for e in freezable_entries]
+    freezable_time_scales = Union{Nothing, Symbol, Float64}[last(e) for e in freezable_entries]
+    if !isempty(freezable_indices)
+        FROZEN_PARAM in param_names &&
+            error("Parameter name $(FROZEN_PARAM) is reserved for models with freezable variables.")
+        default_params[FROZEN_PARAM] = 0.0
+        push!(param_names, FROZEN_PARAM)
+    end
 
     diffusion = _normalize_diffusion(diffusion)
     _validate_diffusion(diffusion, vars, param_names)
@@ -820,6 +899,16 @@ function RDModel(;
 
         reaction(F, U, x, p, t)
 
+        # Frozen variables keep their values: no reaction, no diffusion.
+        frozen = !isempty(freezable_indices) &&
+                 Float64(get(p_dict, FROZEN_PARAM, 0.0)) > 0.5
+
+        if frozen
+            for j in freezable_indices
+                fill!(view(dUmat, :, j), zero(eltype(dUmat)))
+            end
+        end
+
         tmp = similar(view(Umat, :, 1))
 
         # The model is solved on the unit interval: on a domain of length L
@@ -828,6 +917,7 @@ function RDModel(;
 
         for var in vars
             j = var_index[var]
+            frozen && j in freezable_indices && continue
             D = _diffusion_coefficient(diffusion, var, p) / scale
 
             if D != 0.0
@@ -858,6 +948,8 @@ function RDModel(;
         spatial_profile_notes = String[meta.note for meta in spatial_profile_metadata],
         spatial_profile_hidden_parameters = spatial_profile_hidden_parameters,
         latex_equations = _make_latex_equations(latex_equations),
+        freezable_variables = freezable_indices,
+        freezable_time_scales = freezable_time_scales,
     )
 end
 

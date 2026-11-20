@@ -54,6 +54,9 @@ include("SeriesSimulation.jl")
 include("SaveLoad.jl")
 include("SeriesPresets.jl")
 
+# Halves of a panel, centred cuts and Cut and run (Source tools).
+include("Doublet.jl")
+
 
 export ModelSpec
 export RDModel

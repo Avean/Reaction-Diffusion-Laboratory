@@ -205,7 +205,11 @@ function apply_series_perturbations!(
 end
 
 
-function series_stationarity_residual(sim::SimulationState)
+function series_stationarity_residual(sim::SimulationState; rate_weights = nothing)
+    # rate_weights (optional, one per variable) multiply the scaled rate of
+    # each variable, e.g. the time scale τ of a slow variable whose equation
+    # is divided by τ (Cut and run, see freezable_rate_weights). Without
+    # them, as in every series, all weights are 1.
     integrator = sim.integrator_ref[]
     du = similar(integrator.u)
     integrator.f(du, integrator.u, integrator.p, integrator.t)
@@ -220,7 +224,8 @@ function series_stationarity_residual(sim::SimulationState)
     # variable cannot hide continued evolution in a small-amplitude one.
     for variable in 1:sim.model.nvars
         scale = max(1.0, maximum(abs, @view(U[:, variable])))
-        maximum_rate = max(maximum_rate, maximum(abs, @view(dU[:, variable])) / scale)
+        weight = rate_weights === nothing ? 1.0 : Float64(rate_weights[variable])
+        maximum_rate = max(maximum_rate, weight * maximum(abs, @view(dU[:, variable])) / scale)
     end
 
     return maximum_rate
@@ -280,6 +285,7 @@ function run_series_panel!(
     cancelled::Function = () -> false,
     on_snapshot::Function = _ -> nothing,
     on_residual::Function = _ -> nothing,
+    rate_weights = nothing,
 )
     validate_series_settings(settings, sim.model.nvars)
     stable_checks = 0
@@ -307,7 +313,7 @@ function run_series_panel!(
         # not a solver stop. A single accepted step may cross many intervals;
         # it still produces exactly one check at the accepted endpoint.
         if integrator.t - last_check_time >= settings.check_interval
-            residual = series_stationarity_residual(sim)
+            residual = series_stationarity_residual(sim; rate_weights = rate_weights)
             stable_checks = residual < settings.tolerance ? stable_checks + 1 : 0
             last_check_time = integrator.t
             last_residual_time = integrator.t
@@ -333,7 +339,7 @@ function run_series_panel!(
     # If the final accepted state was not already checked, report its residual
     # for diagnostics without counting it as another convergence check.
     if last_residual_time != integrator.t
-        residual = series_stationarity_residual(sim)
+        residual = series_stationarity_residual(sim; rate_weights = rate_weights)
         on_residual(residual)
         debug_series_residual(
             run_index,

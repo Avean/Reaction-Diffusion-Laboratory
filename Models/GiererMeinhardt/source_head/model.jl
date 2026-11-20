@@ -23,7 +23,7 @@
 RDModel(
     id = :gierer_meinhardt_source_head,
 
-    display_name = "Source head",
+    display_name = "Two level source",
     description = "A source-driven Gierer-Meinhardt model with a head-related field. It is intended for studying localized source and head configurations.",
 
     variables = (:u, :v, :h, :sd),

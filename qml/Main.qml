@@ -35,11 +35,17 @@ ApplicationWindow {
         const entry = family && family.models.find(item => item.key === ui.activeModelKey)
         return entry ? entry.profileSets : []
     }
+    // Models with a variable that Freeze SD can stop show the Source density tools.
+    readonly property bool activeModelFreezable: {
+        const family = modelCatalog[activeFamilyIndex]
+        const entry = family && family.models.find(item => item.key === ui.activeModelKey)
+        return entry ? entry.freezable === true : false
+    }
     property string bottomPanel: ""
     // Series mode leaves the main window usable: Start takes everything from
     // the live state. Only a running series disables its controls, except the
-    // Series toggle.
-    property bool controlsEnabled: !ui.graphicsBusy && !ui.seriesRunning
+    // Series toggle. A running Cut and run disables them too, except its Stop.
+    property bool controlsEnabled: !ui.graphicsBusy && !ui.seriesRunning && !ui.cutRunRunning
 
     // The parameter fields are updated in place: rebuilding them after every
     // edit would destroy the field being edited, losing its focus and
@@ -1029,6 +1035,178 @@ ApplicationWindow {
                             }
                         }
 
+                        // Freeze SD, Cut, Cut and run and the half operations; they
+                        // act on u, v and sd together, on a single panel.
+                        ControlSection {
+                            title: "Source density"
+                            visible: window.activeModelFreezable
+                            Layout.leftMargin: 9
+                            Layout.rightMargin: 9
+
+                            ColumnLayout {
+                                id: sourceTools
+                                Layout.fillWidth: true
+                                spacing: 6
+                                readonly property bool frozen: {
+                                    if (!visible)
+                                        return false
+                                    const parameter = JSON.parse(window.modelParametersJson).find(item => item.key === "frozen")
+                                    return parameter ? Number(parameter.value) > 0.5 : false
+                                }
+
+                                TileButton {
+                                    Layout.fillWidth: true
+                                    dark: false
+                                    text: sourceTools.frozen ? "SD frozen" : "Freeze SD"
+                                    checked: sourceTools.frozen
+                                    enabled: window.controlsEnabled
+                                    onClicked: Julia.setSourceFrozen(!checked)
+                                }
+
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    columnSpacing: 8
+                                    rowSpacing: 6
+
+                                    Label {
+                                        Layout.preferredWidth: 90
+                                        text: "Body length"
+                                        color: "#20252d"
+                                    }
+
+                                    TextField {
+                                        id: bodyLengthField
+                                        Layout.fillWidth: true
+                                        text: "8.544"
+                                        selectByMouse: true
+                                        enabled: window.controlsEnabled
+                                        validator: DoubleValidator { notation: DoubleValidator.StandardNotation; bottom: 0; locale: "C" }
+                                        onActiveFocusChanged: window.textEditorFocused = activeFocus
+                                    }
+
+                                    Label {
+                                        Layout.preferredWidth: 90
+                                        text: "Cut length"
+                                        color: "#20252d"
+                                    }
+
+                                    TextField {
+                                        id: cutLengthField
+                                        Layout.fillWidth: true
+                                        text: "3.204"
+                                        selectByMouse: true
+                                        enabled: window.controlsEnabled
+                                        validator: DoubleValidator { notation: DoubleValidator.StandardNotation; bottom: 0; locale: "C" }
+                                        onActiveFocusChanged: window.textEditorFocused = activeFocus
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Cut"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.cutCenter(cutLengthField.text)
+                                    }
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Cut and run"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.cutAndRun(bodyLengthField.text, cutLengthField.text)
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "Cut keeps the middle of the domain; the domain becomes [0, length]. Cut and run starts the whole body from u = v = 0 with a large u bump at the left end, runs it to a steady state, then cuts and freezes SD."
+                                    wrapMode: Text.WordWrap
+                                    color: "#68717d"
+                                    font.italic: true
+                                }
+
+                                // Progress of a running Cut and run; Stop stays clickable
+                                // while the other controls are disabled.
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: ui.cutRunRunning
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: ui.cutRunStatus
+                                        wrapMode: Text.WordWrap
+                                        color: "#20252d"
+                                    }
+
+                                    TileButton {
+                                        dark: false
+                                        text: "Stop"
+                                        onClicked: Julia.stopCutAndRun()
+                                    }
+                                }
+
+                                Label {
+                                    text: "Halves"
+                                    color: "#20252d"
+                                }
+
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    columnSpacing: 6
+                                    rowSpacing: 6
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        Layout.columnSpan: 2
+                                        dark: false
+                                        text: "Swap halves"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.applyHalfOperation("swap")
+                                    }
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Flip left"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.applyHalfOperation("flip_left")
+                                    }
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Flip right"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.applyHalfOperation("flip_right")
+                                    }
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Copy left → right"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.applyHalfOperation("copy_left_to_right")
+                                    }
+
+                                    TileButton {
+                                        Layout.fillWidth: true
+                                        dark: false
+                                        text: "Copy right → left"
+                                        enabled: window.controlsEnabled
+                                        onClicked: Julia.applyHalfOperation("copy_right_to_left")
+                                    }
+                                }
+                            }
+                        }
+
                         ControlSection {
                             title: "Model parameters"
                             expanded: false
@@ -1165,8 +1343,10 @@ ApplicationWindow {
                                         required property real value
                                         required property string displayText
                                         Layout.fillWidth: true
-                                        visible: !parameterColumn.twoPieceProfile
-                                                 || (key !== "ρleft" && key !== "ρright")
+                                        // The Source density section sets frozen.
+                                        visible: (!parameterColumn.twoPieceProfile
+                                                  || (key !== "ρleft" && key !== "ρright"))
+                                                 && !(window.activeModelFreezable && key === "frozen")
 
                                         Label {
                                             Layout.preferredWidth: 74
