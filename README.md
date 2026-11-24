@@ -66,6 +66,8 @@ The Gierer–Meinhardt **Source** model has extra controls in **Models**.
 
 The series presets of **Rho profile 2 piece** are also available for this model.
 
+The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand.
+
 ## Save your work
 
 | Control | What it saves |
@@ -87,6 +89,7 @@ export individual field profiles.
 | [Gierer–Meinhardt](Models/GiererMeinhardt) | Activator–inhibitor systems with degradation, oscillations, spatial source density and grafting variants |
 | [Mechanochemical](Models/Mechanochemical) | Global coupling, local and normalized kernels, and an oscillating ramp |
 | [Stem cells](Models/StemCells) | Quiescent and active stem-cell populations |
+| [Receptor-based](Models/ReceptorBased) | Non-diffusing receptors with a ligand and a ligand-degrading enzyme (system (5.2) of Münnich, Cygan, André and Marciniak-Czochra), without and with a dynamic source density |
 
 <details>
 <summary>Add a model or series preset</summary>
