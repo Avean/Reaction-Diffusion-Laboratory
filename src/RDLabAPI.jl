@@ -243,7 +243,7 @@ body_from_entry(entry) = Body(entry["L"], entry["rho0"], entry["rho1"])
 """
     load_models()
 
-The model registry: registry key (e.g. "GiererMeinhardt/rho") => ModelSpec.
+The model registry: registry key (e.g. "GiererMeinhardt/rho_two_piece") => ModelSpec.
 The model files are loaded once, with the module.
 """
 load_models() = C.MODEL_REGISTRY
@@ -252,9 +252,9 @@ load_models() = C.MODEL_REGISTRY
 """
     find_model(id) -> (key, model)
 
-A model by registry key ("GiererMeinhardt/rho"), by model id
-(:gierer_meinhardt_rho or "gierer_meinhardt_rho") or by its folder name when
-that is unique ("rho").
+A model by registry key ("GiererMeinhardt/rho_two_piece"), by model id
+(:gierer_meinhardt_rho_two_piece or "gierer_meinhardt_rho_two_piece") or by
+its folder name when that is unique ("rho_two_piece").
 """
 function find_model(id)
     registry = C.MODEL_REGISTRY

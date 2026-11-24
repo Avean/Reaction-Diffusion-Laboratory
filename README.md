@@ -104,16 +104,16 @@ also names the time scale the variable's equation is divided by, so that
 **Cut and run** waits until it reaches its equilibrium.
 
 Put series presets in TOML files beside the model. The
-[Rho profile preset](Models/GiererMeinhardt/rho/left_center_right.toml) shows
+[Rho independent preset](Models/GiererMeinhardt/rho_independent/left_center_right.toml) shows
 how to specify a description, constant `[initial_values]` and one
 `[[perturbations]]` entry per bump. In **Preset** mode, variables omitted
 from `[initial_values]` keep their live values. **Save preset** in the series
 window writes files in the same format, named after the preset.
 
-For spatial profiles, see the [Rho profile model](Models/GiererMeinhardt/rho/model.jl).
+For spatial profiles, see the [Rho profile 2 piece model](Models/GiererMeinhardt/rho_two_piece/model.jl).
 A profile set groups functions of the unit grid `x` and parameters `p`. A
 function can also accept `rng` to draw a new profile for each series
-realization. The set can provide a displayed `formula`, a `note` and an
+realization, as in the [Rho independent model](Models/GiererMeinhardt/rho_independent/model.jl). The set can provide a displayed `formula`, a `note` and an
 explicit list of profile `parameters`. The app shows the relevant parameters
 for the active profile set.
 

@@ -1,7 +1,7 @@
 # test/test_cut_join.jl — cut, join, flip and graft
 
 const CUT_JOIN_BODY = Body(2.0, 1.0, 0.5)
-const INTACT = steady_state(make_state(:gierer_meinhardt_rho; body = CUT_JOIN_BODY, N = 300, initial = (u = 1.0, v = 2.0)))
+const INTACT = steady_state(make_state(:gierer_meinhardt_rho_two_piece; body = CUT_JOIN_BODY, N = 300, initial = (u = 1.0, v = 2.0)))
 
 relative_difference(a, b) = maximum(abs.(a .- b)) / max(1.0, maximum(abs.(b)))
 
@@ -70,13 +70,13 @@ relative_difference(a, b) = maximum(abs.(a .- b)) / max(1.0, maximum(abs.(b)))
     @test panel_length(h2h) ≈ 2.0
 
     # A piece of another length (another diffusion scale) joins at its physical size.
-    small = make_state(:gierer_meinhardt_rho; body = CUT_JOIN_BODY, piece = (0.0, 0.25), N = 120)
+    small = make_state(:gierer_meinhardt_rho_two_piece; body = CUT_JOIN_BODY, piece = (0.0, 0.25), N = 120)
     mixed = join(foot, small)
     @test panel_length(mixed) ≈ panel_length(foot) + panel_length(small)
     @test only(junctions(mixed)) ≈ panel_length(foot) / panel_length(mixed)
 
     # graft: the donor inserted into the host at s.
-    donor = make_state(:gierer_meinhardt_rho; body = CUT_JOIN_BODY, piece = (0.0, 0.2), N = 100, label = "donor")
+    donor = make_state(:gierer_meinhardt_rho_two_piece; body = CUT_JOIN_BODY, piece = (0.0, 0.2), N = 100, label = "donor")
     grafted = graft(INTACT, donor, 0.5)
     @test panel_length(grafted) ≈ panel_length(INTACT) + panel_length(donor)
     @test length(junctions(grafted)) == 2

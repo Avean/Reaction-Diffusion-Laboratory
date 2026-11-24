@@ -50,6 +50,23 @@ const RESCALED_DISPLAY_UNTIL = DateTime(2026, 11, 5, 17, 4, 52)
 # folder without that file.
 const CENTRED_LINEAR_PROFILES_UNTIL = DateTime(2026, 11, 5, 17, 16, 45)
 
+# The Rho profile model (GiererMeinhardt/rho) was removed in 46b4ebf. Rho
+# profile 2 piece has the same kinetics and parameters and carries a saved ρ
+# the same way; its Linear and Exponential sets with the pieces (ρleft,
+# ρright) below are the former sets. ZigZag and the random variation ρσ of the
+# exponential sets have no counterpart.
+const LEGACY_MODELS = Dict("Rho profile" => "Rho profile 2 piece")
+const LEGACY_RHO_SETS = Dict(
+    "FootHead" => ("Linear", 3, 1),
+    "HeadFoot" => ("Linear", 1, 3),
+    "FootHeadReverse" => ("Linear", 3, 2),
+    "HeadFootReverse" => ("Linear", 4, 1),
+    "ExpFootHead" => ("Exponential", 3, 1),
+    "ExpHeadFoot" => ("Exponential", 1, 3),
+    "ExpFootHeadR" => ("Exponential", 3, 2),
+    "ExpHeadFootR" => ("Exponential", 4, 1),
+)
+
 # ------------------------------------------------------------
 # parameters.txt
 # ------------------------------------------------------------
@@ -158,10 +175,12 @@ normalized_name(text) = lowercase(replace(replace(text, " " => ""), "mainhardt" 
 
 function model_key_for(family, model_name)
     registry = load_models()
-    keys_found = [
+    found(name) = [
         key for (key, model) in registry
-        if normalized_name(C.model_family_name(key)) == normalized_name(family) && model.display_name == model_name
+        if normalized_name(C.model_family_name(key)) == normalized_name(family) && model.display_name == name
     ]
+    keys_found = found(model_name)
+    isempty(keys_found) && haskey(LEGACY_MODELS, model_name) && (keys_found = found(LEGACY_MODELS[model_name]))
     length(keys_found) == 1 || error("No model '$family / $model_name' in Models/.")
     return only(keys_found)
 end
@@ -328,8 +347,19 @@ function rebuild_series(folder)
         @warn "$(basename(folder)): no spatial_profiles.csv, and the series was saved when ρ0 of the linear profiles was the centre value; ρ is evaluated by today's model file and may differ."
     end
 
+    # A profile set of the removed Rho profile model, when ρ is not read from
+    # spatial_profiles.csv: the two-piece set with the same pieces.
+    pieces = Dict{Symbol, Float64}()
+    if rho isa AbstractString && model.display_name != p.model_name
+        set = get(LEGACY_RHO_SETS, rho, nothing)
+        (set === nothing || random_profile) &&
+            error("$(basename(folder)): the profile set $rho of the removed $(p.model_name) model has no counterpart in $(model.display_name).")
+        rho, left, right = set
+        pieces = Dict(:ρleft => Float64(left), :ρright => Float64(right))
+    end
+
     specs = map(scales) do scale
-        params = model_parameters(p, model, scale)
+        params = merge(model_parameters(p, model, scale), pieces)
         start = make_state(key; N = N, diffusion_scale = scale, params = params, rho = rho, initial = panel.initial)
         length_ = sqrt(scale)
         wounds = [

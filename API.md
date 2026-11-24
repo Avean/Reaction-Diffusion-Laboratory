@@ -28,7 +28,7 @@ using .RDLabAPI
 
 body = Body(2.0, 1.0, 0.5)
 start = make_state(
-    :gierer_meinhardt_rho;
+    :gierer_meinhardt_rho_two_piece;
     body,
     N = 300,
     params = (Du = 0.01, Dv = 1.0),
@@ -85,7 +85,7 @@ original values, such as `Du = 0.01`.
 | --- | --- |
 | `list_models()` | Prints the model keys, IDs, variables, parameters and profile sets |
 | `load_models()` | Returns the model registry keyed by `family/model` |
-| `find_model(id)` | Returns `(key, model)` for a key such as `"GiererMeinhardt/rho"`, an ID such as `:gierer_meinhardt_rho`, or an unambiguous folder name such as `"rho"` |
+| `find_model(id)` | Returns `(key, model)` for a key such as `"GiererMeinhardt/rho_two_piece"`, an ID such as `:gierer_meinhardt_rho_two_piece`, or an unambiguous folder name such as `"rho_two_piece"` |
 
 ### Create a state
 

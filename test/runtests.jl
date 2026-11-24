@@ -22,9 +22,9 @@ const C = RDLabAPI.C
         loaded = [id.name for id in keys(Base.loaded_modules)]
         @test isempty(intersect(loaded, gui_packages))
         @test length(load_models()) == length(C.model_files(C.MODEL_DIR))
-        key, model = find_model(:gierer_meinhardt_rho)
-        @test key == "GiererMeinhardt/rho"
-        @test find_model("rho")[1] == key
+        key, model = find_model(:gierer_meinhardt_rho_two_piece)
+        @test key == "GiererMeinhardt/rho_two_piece"
+        @test find_model("rho_two_piece")[1] == key
     end
 
     include("test_piece_rule.jl")

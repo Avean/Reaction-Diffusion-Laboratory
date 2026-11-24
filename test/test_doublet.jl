@@ -75,7 +75,7 @@
         @test !C.variables_frozen(sim.model, sim.params)
 
         # A model without freezable variables has no parameter frozen.
-        _, rho_model = find_model(:gierer_meinhardt_rho)
+        _, rho_model = find_model(:gierer_meinhardt_rho_two_piece)
         @test isempty(rho_model.freezable_variables)
         @test !(:frozen in C.public_model_parameter_names(rho_model))
 
@@ -110,7 +110,7 @@
         @test_throws ErrorException C.cut_simulation_state(st.sim, 0.0)
 
         # A spatial profile would not follow the piece.
-        rho_state = make_state(:gierer_meinhardt_rho; N = 101, initial = :model, seed = 3)
+        rho_state = make_state(:gierer_meinhardt_rho_two_piece; N = 101, initial = :model, seed = 3)
         @test_throws ErrorException C.cut_simulation_state(rho_state.sim, 0.5)
     end
 

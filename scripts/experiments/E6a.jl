@@ -26,7 +26,7 @@ const L = 2.0          # body length
 const RHO0 = 1.0       # ρ at the body centre
 const RHO1 = 0.5       # ρ_body(s) = ρ0 + ρ1 (1/2 - s), s = 0 head, 1 foot
 const SD = true        # false: ρ ≡ ρ0
-const MODEL = :gierer_meinhardt_rho
+const MODEL = :gierer_meinhardt_rho_two_piece
 const PARAMS = (Du = 0.01, Dv = 1.0, a = 1.5, b = 2.0, μu = 0.5, μv = 1.0)
 const N = 300
 

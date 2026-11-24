@@ -32,13 +32,16 @@ include(joinpath(REPO, "src", "QMLInterface.jl"))
 using .ReactionDiffusionQML
 const Q = ReactionDiffusionQML
 
-# Two series of the Rho profile model on a panel of length 1.2: without
-# source density (ρ ≡ 1) and with it (FootHead ρ0 + ρ1 x).
+# Two series of the Rho profile 2 piece model on a panel of length 1.2:
+# without source density (ρ ≡ 1) and with it (Linear with the default pieces,
+# ρ0 + ρ1 x), both with the first Series preset of the model.
+const MODEL_KEY = "GiererMeinhardt/rho_two_piece"
+const MODEL_PRESETS = filter(preset -> preset.model_key == MODEL_KEY, Q.SERIES_PRESETS)
+isempty(MODEL_PRESETS) && error("The test needs a Series preset of $MODEL_KEY (a .toml file beside its model.jl).")
+const PRESET = first(MODEL_PRESETS)
 const CASES = [
-    (name = "no_SD", params = ["ρ0" => "1", "ρ1" => "0"], exponent = 2 * log10(1.2),
-     preset = "ends_and_center.toml", runs = 12),
-    (name = "SD", params = ["ρ0" => "0.85", "ρ1" => "0.3"], exponent = 2 * log10(1.2),
-     preset = "left_center_right.toml", runs = 12),
+    (name = "no_SD", params = ["ρ0" => "1", "ρ1" => "0"], exponent = 2 * log10(1.2), runs = 12),
+    (name = "SD", params = ["ρ0" => "0.85", "ρ1" => "0.3"], exponent = 2 * log10(1.2), runs = 12),
 ]
 
 const GUI = Dict{String, Any}()
@@ -58,7 +61,7 @@ function drive_application()
         sleep(1.0)
 
         for case in CASES
-            Q.select_model!(c, "GiererMeinhardt/rho")
+            Q.select_model!(c, MODEL_KEY)
             check_message(c, "Model selection")
             for (name, value) in case.params
                 Q.set_model_parameter_from_qml!(c, name, value)
@@ -66,9 +69,15 @@ function drive_application()
             end
             Q.set_domain_exponent!(c, case.exponent)
             check_message(c, "Domain rescale")
+            # Variables the preset gives no initial value start from the live
+            # state: u = v = 0 here, as in the API spec.
+            for variable in 0:1
+                Q.apply_constant_initial_condition!(c, variable, "0")
+                check_message(c, "Initial value of variable $(variable + 1)")
+            end
             Q.set_series_mode!(c, true)
             check_message(c, "Series mode")
-            Q.select_series_preset!(c, case.preset)
+            Q.select_series_preset!(c, PRESET.key)
             check_message(c, "Series preset")
             Q.set_series_integer_setting!(c, :run_count, case.runs)
             check_message(c, "Run count")
@@ -105,8 +114,8 @@ function drive_application()
         # Save and Load of the simulation, through the split SaveLoad files.
         Q.save_simulation!(c, "gui_vs_api"; root = SCRATCH)
         check_message(c, "Save")
-        directory = joinpath(SCRATCH, "simulation", "gierer_meinhardt_rho")
-        file = only(filter(name -> endswith(name, ".json"), readdir(directory)))
+        directory = joinpath(SCRATCH, "simulation", "gierer_meinhardt_rho_two_piece")
+        file = only(filter(name -> endswith(name, "_gui_vs_api.json"), readdir(directory)))
         GUI["load"] = Q.load_simulation_save!(c, file; root = SCRATCH)
         check_message(c, "Load")
 
@@ -125,14 +134,14 @@ function drive_application()
         Q.set_model_parameter_from_qml!(c, "ρleft", "3")
         check_message(c, "Change left piece")
         directory = joinpath(SCRATCH, "simulation", "gierer_meinhardt_rho_two_piece")
-        file = only(filter(name -> endswith(name, ".json"), readdir(directory)))
+        file = only(filter(name -> endswith(name, "_two_piece.json"), readdir(directory)))
         GUI["two_piece_load"] = Q.load_simulation_save!(c, file; root = SCRATCH)
         check_message(c, "Load two-piece model")
         GUI["two_piece_set"] = c.bindings.active_profile_set[]
         GUI["two_piece_profile"] = only(Q.RD.current_spatial_profile_values(c.app.simulations))["ρ"]
 
         GUI["sidebar_profiles"] = String[]
-        for (key, index) in (("rho", 7), ("rho_independent", 2), ("rho_graft", 2))
+        for (key, index) in (("rho_two_piece", 4), ("rho_independent", 2), ("rho_graft", 2))
             Q.select_model!(c, "GiererMeinhardt/$key")
             check_message(c, "Model selection for $key")
             Q.select_spatial_profile_set!(c, index)
@@ -143,11 +152,11 @@ function drive_application()
 
         # Save preset and Delete preset of the series window, into a scratch
         # folder instead of the model folder.
-        Q.select_model!(c, "GiererMeinhardt/rho")
+        Q.select_model!(c, MODEL_KEY)
         check_message(c, "Model selection for presets")
         Q.set_series_mode!(c, true)
         check_message(c, "Series mode for presets")
-        Q.select_series_preset!(c, "three_wounds_narrow.toml")
+        Q.select_series_preset!(c, PRESET.key)
         check_message(c, "Series preset for Save preset")
         folder = mkpath(joinpath(SCRATCH, "presets"))
         name = "GUI ends"
@@ -155,7 +164,7 @@ function drive_application()
         Q.save_series_preset!(c, name, "Saved by the test", false; directory = folder)
         check_message(c, "Save preset")
         path = joinpath(folder, "gui_ends.toml")
-        saved = Q.RD.load_series_preset(path, "GiererMeinhardt/rho")
+        saved = Q.RD.load_series_preset(path, MODEL_KEY)
         panel = filter(p -> p.segment == 1, c.series.perturbations)
         varnames = c.app.simulations[1].model.varnames
         after = Q.JSON.parse(Q.series_preset_target_json(c, name; directory = folder))
@@ -171,10 +180,10 @@ function drive_application()
         )
         Q.save_series_preset!(c, name, "Not saved", false; directory = folder)
         GUI["preset_refused"] = !isempty(c.bindings.message[]) &&
-                                Q.RD.load_series_preset(path, "GiererMeinhardt/rho").description == "Saved by the test"
+                                Q.RD.load_series_preset(path, MODEL_KEY).description == "Saved by the test"
         Q.save_series_preset!(c, name, "Replaced", true; directory = folder)
         check_message(c, "Replace preset")
-        GUI["preset_replaced"] = Q.RD.load_series_preset(path, "GiererMeinhardt/rho").description
+        GUI["preset_replaced"] = Q.RD.load_series_preset(path, MODEL_KEY).description
         Q.delete_series_preset!(c, "gui_ends.toml")
         check_message(c, "Delete preset")
         listed = Q.JSON.parse(c.bindings.series_presets_json[])
@@ -188,8 +197,9 @@ function drive_application()
         # A minimum above the maximum raises the maximum, a maximum below the
         # minimum lowers the minimum (the fields of a perturbation card).
         edited = first(filter(p -> p.segment == 1, c.series.perturbations))
+        GUI["ranges_start"] = (edited.width_min, edited.width_max, edited.height_min, edited.height_max)
         ranges = Tuple{Float64, Float64, Float64, Float64}[]
-        for (field, value) in (("heightMin", "3"), ("heightMax", "1"), ("widthMin", "0.5"), ("widthMax", "0.02"))
+        for (field, value) in (("heightMin", "9"), ("heightMax", "1"), ("widthMin", "0.5"), ("widthMax", "0.02"))
             Q.update_series_perturbation!(c, edited.id, field, value)
             check_message(c, "Perturbation field $field")
             push!(ranges, (edited.width_min, edited.width_max, edited.height_min, edited.height_max))
@@ -219,22 +229,23 @@ using .RDLabAPI
 function api_spec(case)
     params = Dict(Symbol(name) => parse(Float64, value) for (name, value) in case.params)
     start = make_state(
-        :gierer_meinhardt_rho;
+        MODEL_KEY;
         N = 300,
         diffusion_scale = 10.0^case.exponent,
         params = params,
-        rho = "FootHead",
-        initial = :rest,
+        rho = "Linear",
+        # The preset's initial values over u = v = 0, the live state the
+        # application series starts from.
+        initial = (u = get(PRESET.initial_values, "u", 0.0), v = get(PRESET.initial_values, "v", 0.0)),
     )
-    preset = TOML.parsefile(joinpath(REPO, "Models", "GiererMeinhardt", "rho", case.preset))
     wounds = [
         Wound(
-            p["position"];
-            width_fraction = (p["width_min_fraction"], p["width_max_fraction"]),
-            height = (p["height_min"], p["height_max"]),
-            variable = p["variable"],
+            p.position_fraction;
+            width_fraction = (p.width_min_fraction, p.width_max_fraction),
+            height = (p.height_min, p.height_max),
+            variable = p.variable_name,
         )
-        for p in preset["perturbations"]
+        for p in PRESET.perturbations
     ]
     return SeriesSpec(experiment = "gui_vs_api", name = case.name, start = start, wounds = wounds,
         runs = case.runs, seed = 12345)
@@ -244,30 +255,36 @@ end
     @test GUI["load"] == true
     @test GUI["two_piece_load"] == true
     @test GUI["two_piece_set"] == 2
-    legacy = make_state(:gierer_meinhardt_rho; N = 300, params = (ρsplit = 0.3,), rho = "ExpHeadFoot")
-    @test GUI["two_piece_profile"] ≈ rho_values(legacy)
-    @test GUI["sidebar_profiles"] == ["ExpHeadFoot", "Exponential", "Gauss"]
+    # Exponential with ρsplit = 0.3, (ρleft, ρright) = (1, 3): the former
+    # ExpHeadFoot, ρa + ρb exp(ρc y) with y = x + 1 - 0.3 left of the split and
+    # y = x - 0.3 right of it (defaults ρa = ρb = 0.5, ρc = 1).
+    x = range(0.0, 1.0; length = 300)
+    @test GUI["two_piece_profile"] ≈ [0.5 + 0.5 * exp(xi < 0.3 ? xi + 1 - 0.3 : xi - 0.3) for xi in x]
+    @test GUI["sidebar_profiles"] == ["SD_variant_B", "Exponential", "Gauss"]
 
     saved = GUI["preset_saved"]
     @test saved.target == (false, true, true)
     @test saved.selected == "gui_ends.toml"
     @test saved.listed
     @test saved.values == saved.panel
-    @test length(saved.values) == 3
+    @test length(saved.values) == length(PRESET.perturbations)
     @test GUI["preset_refused"]
     @test GUI["preset_replaced"] == "Replaced"
-    @test GUI["preset_deleted"] == (file = false, listed = false, selected = "custom", kept = 3)
-    # Starting from widths 0.03–0.06 and heights 1.6–2.6 (three_wounds_narrow).
+    @test GUI["preset_deleted"] == (file = false, listed = false, selected = "custom",
+                                    kept = length(PRESET.perturbations))
+    # Each edit moves the other end of the range when it would cross it.
+    w0, w1, _, h1 = GUI["ranges_start"]
+    @test h1 < 9 && w1 < 0.5
     @test GUI["ranges"] == [
-        (0.03, 0.06, 3.0, 3.0),
-        (0.03, 0.06, 1.0, 1.0),
+        (w0, w1, 9.0, 9.0),
+        (w0, w1, 1.0, 1.0),
         (0.5, 0.5, 1.0, 1.0),
         (0.02, 0.02, 1.0, 1.0),
     ]
 
     catalog = Q.JSON.parse(Q.model_catalog_json(Q.RD.MODEL_REGISTRY))
     profile_sets = Dict(entry["key"] => entry["profileSets"] for family in catalog for entry in family["models"])
-    @test profile_sets["GiererMeinhardt/rho"][7] == "ExpHeadFoot"
+    @test profile_sets[MODEL_KEY] == ["Linear", "Exponential", "SD_current", "SD_variant_B"]
     @test profile_sets["GiererMeinhardt/rho_independent"] == ["Linear", "Exponential"]
     @test profile_sets["GiererMeinhardt/rho_graft"] == ["Linear", "Gauss"]
     @test isempty(profile_sets["GiererMeinhardt/source"])

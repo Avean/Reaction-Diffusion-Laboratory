@@ -5,7 +5,7 @@
 # ============================================================
 #
 # A preset is a TOML file beside the model.jl of its model, see
-# Models/GiererMeinhardt/rho/three_wounds_narrow.toml: a name, an optional
+# Models/GiererMeinhardt/rho_independent/left_center_right.toml: a name, an optional
 # description and [initial_values], and one [[perturbations]] entry per bump.
 # The series window loads every preset at startup, and its Save preset and
 # Delete preset buttons write and remove these files. Part of the headless
