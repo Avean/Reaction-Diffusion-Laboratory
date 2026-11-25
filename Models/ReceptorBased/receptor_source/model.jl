@@ -21,7 +21,9 @@
 # and the inhibition grow together, as with ρ in Gierer-Meinhardt.
 #
 # Defaults: kinetics as in the receptor model (GM-like regime, body of
-# length 1); Dsd and μsd fitted (τ = 1) so that the steady state with one
+# length 7.17: set the domain length to 7.17; the diffusion coefficients are
+# the values for a body of length 1 times 7.17², see the receptor model);
+# Dsd and μsd fitted (τ = 1) so that the steady state with one
 # head at s = 0 has sd = 3.98, 1.55, 0.90, 0.55, 0.33 at s = 0, 0.33, 0.5,
 # 0.67, 1, the Reference profile of the Gierer-Meinhardt Source model of the
 # RoleOfSource paper (3.99, 1.51, 0.89, 0.55, 0.33). The upper homogeneous
@@ -37,7 +39,7 @@ RDModel(
     id = :receptor_based_source,
 
     display_name = "Receptor + Source",
-    description = "Receptor model (non-diffusing receptors u, ligand v, enzyme w) with a dynamic source density sd that multiplies ligand and enzyme production and is produced by the receptor signal uv/(1+uv). Freeze SD (frozen = 1) keeps sd as a fixed profile. ic_head = 1 starts with one head at the right end and sd = 1, ic_head = 0 near the upper homogeneous state with 1 % noise.",
+    description = "Receptor model (non-diffusing receptors u, ligand v, enzyme w) with a dynamic source density sd that multiplies ligand and enzyme production and is produced by the receptor signal uv/(1+uv). Body of length 7.17 (set the domain length to 7.17). Freeze SD (frozen = 1) keeps sd as a fixed profile. ic_head = 1 starts with one head at the right end and sd = 1, ic_head = 0 near the upper homogeneous state with 1 % noise.",
 
     variables = (:u, :v, :w, :sd),
 
@@ -48,9 +50,10 @@ RDModel(
     parameters = (
         τ = 500.0,
 
-        Dv = 0.0045,
-        Dw = 0.0085,
-        Dsd = 0.00335,
+        # Values for a body of length 1 (0.0045, 0.0085, 0.00335) times 7.17².
+        Dv = 0.23134,
+        Dw = 0.43698,
+        Dsd = 0.17222,
 
         m1 = 3.2,
         m2 = 9.0,

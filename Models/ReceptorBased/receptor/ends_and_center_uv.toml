@@ -1,5 +1,5 @@
 name = "u and v: ends and center"
-description = "Wounds on receptors u and ligand v at both ends (width 6% of the panel) and the center (width 0.02 of a body of length 1 ≈ 6% of a doublet), height 1.5–3.5. The receptor head needs both: a bump of u alone or of v alone does not ignite."
+description = "Wounds on receptors u and ligand v at both ends (width 6% of the panel) and the center (6% of the panel: 0.146 on a doublet of length 2.43, ≈ the 0.143 = 0.02 × 7.17 junction wound of the experiments), height 1.5–3.5. The receptor head needs both: a bump of u alone or of v alone does not ignite."
 
 [[perturbations]]
 variable = "u"

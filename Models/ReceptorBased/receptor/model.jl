@@ -25,10 +25,15 @@
 #   - c uses max(u, 0) and max(v, 0): negative round-off values relax to 0
 #     instead of being amplified towards the pole u v = -1.
 #
-# Default parameters: the GM-like regime found on 24.11.2026 for a body of
-# length 1 (stable resting state, Turing-unstable upper state with 3-4
-# peaks de novo, stable states with 1, 2, 3, ... heads, wound-induced heads
-# with an inhibition zone of about 0.2). The paper's set (Figs. 3-5) is
+# Default parameters: the GM-like regime found on 24.11.2026 (stable resting
+# state, Turing-unstable upper state with 3-4 peaks de novo, stable states
+# with 1, 2, 3, ... heads, wound-induced heads with an inhibition zone of
+# about 0.2 of the body), for a body of length 7.17 as in the Gierer-Meinhardt
+# simulations of the RoleOfSource paper (doublet 2.43 = 0.339 of the body):
+# set the domain length to 7.17. The regime was found on a body of length 1
+# with Dv = 0.0045, Dw = 0.0085; the defaults are these times 7.17² = 51.41,
+# which gives the same solutions stretched in space (the model is solved on
+# the unit interval with D / L²). The paper's set (Figs. 3-5) is
 # m1 = 2.5, m2 = 9.68, m3 = 7, μ1 = 1, μ2 = 1, μ3 = 0.6 on the domain (0, 1)
 # with (Dv, Dw) = (0.1, 1), (0.026, 0.12), (0.0115, 0.037) or (0.006, 0.017)
 # and pu = pv = 0; with it a single head spreads over about half the domain.
@@ -42,13 +47,14 @@ RDModel(
     id = :receptor_based,
 
     display_name = "Receptor",
-    description = "Receptor-based model (5.2) of Münnich, Cygan, André and Marciniak-Czochra: non-diffusing receptors u, slowly diffusing ligand v and fast-diffusing enzyme w that degrades the ligand. Tiny basal productions pu, pv keep u and v off the invariant zero state. Defaults: GM-like regime on a body of length 1. ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
+    description = "Receptor-based model (5.2) of Münnich, Cygan, André and Marciniak-Czochra: non-diffusing receptors u, slowly diffusing ligand v and fast-diffusing enzyme w that degrades the ligand. Tiny basal productions pu, pv keep u and v off the invariant zero state. Defaults: GM-like regime on a body of length 7.17 (set the domain length to 7.17). ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
 
     variables = (:u, :v, :w),
 
     parameters = (
-        Dv = 0.0045,
-        Dw = 0.0085,
+        # Values for a body of length 1 (0.0045, 0.0085) times 7.17².
+        Dv = 0.23134,
+        Dw = 0.43698,
 
         m1 = 3.2,
         m2 = 9.0,

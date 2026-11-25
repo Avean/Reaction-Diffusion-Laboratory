@@ -6,12 +6,13 @@
 # (Models/ReceptorBased/receptor_source, dynamic sd, τ = 500).
 #
 # Protocol as in RoleOfSource simulations/warianty/licz_ms_tau500_uvE1.jl:
-#   - body of length 1, N = 300, Neumann; head at s = 0, on the RIGHT end of a panel;
+#   - body of length BODY = 7.17 (as the GM simulations; doublet 2.43), N = 300, Neumann;
+#     head at s = 0, on the RIGHT end of a panel; s, D_DOUBLET and GRAFT are fractions of the body;
 #   - Reference: steady state with one head (τ = 1 for the source model, which does
 #     not change the steady state); every piece inherits u, v, w and sd from it;
 #   - wounds on u AND v (two Wound entries per site, same distribution):
-#     free ends width 6 % of the piece, doublet junction and graft width 0.02
-#     (absolute), height U(1.5, 3.5); at a graft u = max(u, wound), v = max(v, wound);
+#     free ends width 6 % of the piece, doublet junction and graft width 0.02 of the body
+#     (0.143), height U(1.5, 3.5); at a graft u = max(u, wound), v = max(v, wound);
 #   - readout at t = 96; a head is an active region {u > 0.9} (the receptor head is a
 #     plateau whose u maximum can lie inside the panel, so the peak detection of
 #     HeadDetection.jl can miss a head at an end); A/B/M/G: the region reaches within
@@ -38,14 +39,15 @@ const T_READ = 96.0
 const HEAD_THRESHOLD = 0.9
 const WINDOW = 0.05
 const END_WIDTH_FRACTION = 0.06
-const JUNCTION_WIDTH = 0.02
+const BODY = 7.17                # body length; the regime was found for 1, D scale with BODY²
+const JUNCTION_WIDTH = 0.02 * BODY
 const HEIGHT = (1.5, 3.5)
 const D_DOUBLET = 0.339          # doublet length / body (2.43 / 7.17 in the GM paper)
 const GRAFT = 0.018              # graft length / body
 
-const KIN = (Dv = 0.0045, Dw = 0.0085, m1 = 3.2, m2 = 9.0, m3 = 21.0,
+const KIN = (Dv = 0.23134, Dw = 0.43698, m1 = 3.2, m2 = 9.0, m3 = 21.0,
              μ1 = 0.7, μ2 = 0.6, μ3 = 0.7, pu = 1e-3, pv = 1e-3)
-const SDPAR = (Dsd = 0.00335, μsd = 0.0367)
+const SDPAR = (Dsd = 0.17222, μsd = 0.0367)
 const TAU = 500.0
 
 const MODELS = Dict("rec" => :receptor_based, "sd" => :receptor_based_source)
@@ -68,7 +70,7 @@ function reference(m)
     U[head, 1] .= 3.0
     U[head, 2] .= 1.0
     m == "sd" && (U[:, 4] .= 0.33 .+ 3.66 .* exp.(-(1 .- x) ./ 0.3))
-    st = make_state(MODELS[m]; N, length = 1.0, params = ref_params(m), initial = U, label = "body")
+    st = make_state(MODELS[m]; N, length = BODY, params = ref_params(m), initial = U, label = "body")
     ref = steady_state(st; SOLVER...)
     F = hcat([field(ref, k) for k in 1:nvars(m)]...)
     regions = head_regions(F[:, 1])
@@ -152,7 +154,7 @@ xindex(j) = N - j        # 0-based body index j (s = j/(N-1)) → 1-based grid i
 function fragment(F, sa, sb)
     ja = round(Int, sa * (N - 1)); jb = round(Int, sb * (N - 1))
     idx = [xindex(j) for j in jb:-1:ja]
-    return (F = F[idx, :], length = (length(idx) - 1) / (N - 1), junction = nothing, graft_x = nothing)
+    return (F = F[idx, :], length = BODY * (length(idx) - 1) / (N - 1), junction = nothing, graft_x = nothing)
 end
 
 const CONFIGS = Dict("H2H" => ("U", :right, "U", :left),
@@ -174,7 +176,7 @@ function doublet(F, config)
         head_end == :right ? reverse(js) : js
     end
     js = vcat(ring(ka, na, ea), ring(kb, nb, eb))
-    return (F = F[[xindex(j) for j in js], :], length = (M - 1) / (N - 1),
+    return (F = F[[xindex(j) for j in js], :], length = BODY * (M - 1) / (N - 1),
             junction = (na - 0.5) / (M - 1), graft_x = nothing)
 end
 
@@ -197,10 +199,10 @@ function graft(F, s_h, donor_start)
             G[i, k] = (1 - share) * F[i, k] + share * donor
         end
     end
-    return (F = G, length = 1.0, junction = nothing, graft_x = 1 - s_h)
+    return (F = G, length = BODY, junction = nothing, graft_x = 1 - s_h)
 end
 
-control(F, s_h) = (F = copy(F), length = 1.0, junction = nothing, graft_x = 1 - s_h)
+control(F, s_h) = (F = copy(F), length = BODY, junction = nothing, graft_x = 1 - s_h)
 
 # ---- wounds --------------------------------------------------------------------
 "Wound sites (panel fraction, width as panel fraction) in the order of the wound list."
