@@ -10,8 +10,11 @@ Thumbs.db
 *.jl.*.cov
 *.jl.mem
 
-# Simulation and series saves
-saves/
+# Simulation and series saves; the bundled Reference saves of the models are tracked
+saves/**
+!saves/simulation/
+!saves/simulation/*/
+!saves/simulation/*/2026-11-25_18-00-00_Reference.json
 
 # Output of the scripting API
 results/
