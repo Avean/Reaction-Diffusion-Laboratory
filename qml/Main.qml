@@ -1078,7 +1078,7 @@ ApplicationWindow {
                                     TextField {
                                         id: bodyLengthField
                                         Layout.fillWidth: true
-                                        text: "8.544"
+                                        text: "7.17"
                                         selectByMouse: true
                                         enabled: window.controlsEnabled
                                         validator: DoubleValidator { notation: DoubleValidator.StandardNotation; bottom: 0; locale: "C" }
@@ -1094,7 +1094,7 @@ ApplicationWindow {
                                     TextField {
                                         id: cutLengthField
                                         Layout.fillWidth: true
-                                        text: "3.204"
+                                        text: "2.43"
                                         selectByMouse: true
                                         enabled: window.controlsEnabled
                                         validator: DoubleValidator { notation: DoubleValidator.StandardNotation; bottom: 0; locale: "C" }
