@@ -27,8 +27,11 @@
 # inhibitor grow like sd² and weakens the polarity (25.11.2026, Python
 # mirror of RD Lab).
 #
-# Defaults, for a body of length 1: kinetics of wnt_dkk (set B); Dsd = 0.0036,
-# μsd as in the receptor source model, ksd fitted (τ = 1) so that the steady
+# Defaults, for a body of length 7.17 (set the domain length to 7.17; the
+# diffusion coefficients are the values for a body of length 1, νA = 5.395e-5,
+# νWd = 0.04752, νC = 2.183e-4, Dsd = 0.0036, times 7.17², see wnt_dkk):
+# kinetics of wnt_dkk (set B); μsd as in the receptor source model, ksd
+# fitted (τ = 1, body of length 1) so that the steady
 # state with one head at s = 0 has sd = 3.99, 1.48, 0.91, 0.60, 0.40 at
 # s = 0, 0.33, 0.5, 0.67, 1 (Reference of the Gierer-Meinhardt Source model:
 # 3.99, 1.51, 0.89, 0.55, 0.33). Cut and run from W = A = Wd = C = 0, sd = 1
@@ -43,7 +46,7 @@ RDModel(
     id = :wnt_dkk_source,
 
     display_name = "Wnt-Dkk (S = Wl) + Source",
-    description = "Reduced Wnt-Dkk model (S = Wl) with a dynamic source density sd that multiplies the production of W, Wd and A (switches sdW, sdD, sdA; sd enters as sd^γ) and is produced by W. Freeze SD (frozen = 1) keeps sd as a fixed profile. ic_head = 1 starts with one head at the right end and sd = 1, ic_head = 0 near the upper homogeneous state with 1 % noise.",
+    description = "Reduced Wnt-Dkk model (S = Wl) with a dynamic source density sd that multiplies the production of W, Wd and A (switches sdW, sdD, sdA; sd enters as sd^γ) and is produced by W. Body of length 7.17 (set the domain length to 7.17). Freeze SD (frozen = 1) keeps sd as a fixed profile. ic_head = 1 starts with one head at the right end and sd = 1, ic_head = 0 near the upper homogeneous state with 1 % noise.",
 
     variables = (:W, :A, :Wd, :C, :sd),
 
@@ -61,10 +64,11 @@ RDModel(
         β5 = 1.7809,
         β6 = 11.2524,
 
-        νA = 5.395e-5,
-        νWd = 0.04752,
-        νC = 2.183e-4,
-        Dsd = 0.0036,
+        # Values for a body of length 1 (5.395e-5, 0.04752, 2.183e-4, 0.0036) times 7.17².
+        νA = 0.0027735,
+        νWd = 2.44295,
+        νC = 0.0112226,
+        Dsd = 0.185072,
 
         μsd = 0.0367,
         ksd = 4.4838,

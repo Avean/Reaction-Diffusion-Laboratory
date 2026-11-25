@@ -19,18 +19,25 @@
 # Rest state W = 0, A = β1, Wd = C = 0: stable iff β6 < 1 + β1. The positive
 # homogeneous states solve β6 = (1 + A)(1 + C)(1 + β3 W) with A, Wd and C at
 # their steady values. The lower one is the wound threshold. The upper one is
-# stable without diffusion and Turing unstable with it (modes 3-25 on a body
-# of length 1). The self-enhancement of W goes through A (W represses A, A
+# stable without diffusion and Turing unstable with it (modes 3-25 on the
+# body). The self-enhancement of W goes through A (W represses A, A
 # represses W), so the diffusion of A sets the width of the head: with A
 # eliminated (quasi-steady A) the head edges pin to the grid.
 #
 # Defaults (set B of 25.11.2026, from a parameter scan in a Python mirror of
-# the RD Lab numerics, body of length 1): rest growth rate -0.10, threshold
-# W ≈ 0.03, head height W ≈ 1.44, stable states with one head at an end, one
-# in the middle, 2, 3, 4 and 5 heads (also N = 600), 4 heads de novo,
-# inhibition zone about 0.1 of the body. β6 < β1: with the source density
-# multiplying the production of W and A (wnt_dkk_source) the rest state stays
-# stable for every sd. These are not the parameters of Mercker et al.
+# the RD Lab numerics): rest growth rate -0.10, threshold W ≈ 0.03, head
+# height W ≈ 1.44, stable states with one head at an end, one in the middle,
+# 2, 3, 4 and 5 heads (also N = 600), 4 heads de novo, inhibition zone about
+# 0.1 of the body. β6 < β1: with the source density multiplying the
+# production of W and A (wnt_dkk_source) the rest state stays stable for
+# every sd. These are not the parameters of Mercker et al.
+#
+# Body of length 7.17, as in the Gierer-Meinhardt simulations of the
+# RoleOfSource paper (doublet 2.43 = 0.339 of the body): set the domain length
+# to 7.17. Set B was found on a body of length 1 with νA = 5.395e-5,
+# νWd = 0.04752, νC = 2.183e-4; the defaults are these times 7.17² = 51.41,
+# which gives the same solutions stretched in space (the model is solved on
+# the unit interval with D / L²), as for the receptor models.
 #
 # ============================================================
 
@@ -38,7 +45,7 @@ RDModel(
     id = :wnt_dkk,
 
     display_name = "Wnt-Dkk (S = Wl)",
-    description = "Reduced Wnt-Dkk model of Mercker et al. with the source density S replaced by Wl: non-diffusing W (Wl), diffusing A, Wd and Dkk C. ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
+    description = "Reduced Wnt-Dkk model of Mercker et al. with the source density S replaced by Wl: non-diffusing W (Wl), diffusing A, Wd and Dkk C. Body of length 7.17 (set the domain length to 7.17). ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
 
     variables = (:W, :A, :Wd, :C),
 
@@ -50,9 +57,10 @@ RDModel(
         β5 = 1.7809,
         β6 = 11.2524,
 
-        νA = 5.395e-5,
-        νWd = 0.04752,
-        νC = 2.183e-4,
+        # Values for a body of length 1 (5.395e-5, 0.04752, 2.183e-4) times 7.17².
+        νA = 0.0027735,
+        νWd = 2.44295,
+        νC = 0.0112226,
 
         pW = 1e-4,
 

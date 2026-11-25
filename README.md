@@ -68,7 +68,7 @@ The series presets of **Rho profile 2 piece** are also available for this model.
 
 The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand. Its parameters are for a body of length 7.17, as in the RoleOfSource simulations: use **Body length** 7.17 and the cut lengths 4.30 (0.6 of the body), 2.15 (0.3) or 2.43 (doublet).
 
-The **Wnt-Dkk (S = Wl) + Source** model has the same controls too. Its parameters are for a body of length 1, not 7.17. Its bump goes into `W`, the first variable, and `A`, `Wd` and `C` start from zero. The switches `sdW`, `sdD` and `sdA` choose which productions the source density multiplies; keep `sdW` and `sdA` on, otherwise the rest state loses its stability where `sd` is high or the head cannot hold there (see the model file).
+The **Wnt-Dkk (S = Wl) + Source** model has the same controls too. Its parameters are for a body of length 7.17, as for the receptor models: use **Body length** 7.17. Its bump goes into `W`, the first variable, and `A`, `Wd` and `C` start from zero. The switches `sdW`, `sdD` and `sdA` choose which productions the source density multiplies; keep `sdW` and `sdA` on, otherwise the rest state loses its stability where `sd` is high or the head cannot hold there (see the model file).
 
 ## Save your work
 
