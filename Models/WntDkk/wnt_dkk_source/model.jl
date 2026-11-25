@@ -27,12 +27,13 @@
 # inhibitor grow like sd² and weakens the polarity (25.11.2026, Python
 # mirror of RD Lab).
 #
-# Defaults: kinetics of wnt_dkk (set B); Dsd and μsd as in the receptor
-# source model, ksd fitted (τ = 1) so that the steady state with one head at
-# s = 0 has sd = 3.99, 1.48, 0.91, 0.60, 0.40 at s = 0, 0.33, 0.5, 0.67, 1
-# (Reference of the Gierer-Meinhardt Source model: 3.99, 1.51, 0.89, 0.55,
-# 0.33). Cut and run from W = A = Wd = C = 0, sd = 1 gives one head at the
-# left end and sd = 4.07, 1.45, 0.87, 0.56, 0.37. The upper homogeneous state
+# Defaults, for a body of length 1: kinetics of wnt_dkk (set B); Dsd = 0.0036,
+# μsd as in the receptor source model, ksd fitted (τ = 1) so that the steady
+# state with one head at s = 0 has sd = 3.99, 1.48, 0.91, 0.60, 0.40 at
+# s = 0, 0.33, 0.5, 0.67, 1 (Reference of the Gierer-Meinhardt Source model:
+# 3.99, 1.51, 0.89, 0.55, 0.33). Cut and run from W = A = Wd = C = 0, sd = 1
+# (τ = 500, N = 300) gives one head at the left end and reaches the same
+# steady state, sd = 3.99, 1.48, 0.91, 0.60, 0.40. The upper homogeneous state
 # (W, A, Wd, C, sd) ≈ (0.0998, 89.2, 0.378, 0.321, 12.2) is stable without
 # diffusion and Turing unstable with it (τ = 1).
 #
