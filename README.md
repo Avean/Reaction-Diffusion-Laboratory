@@ -68,6 +68,8 @@ The series presets of **Rho profile 2 piece** are also available for this model.
 
 The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand.
 
+The **Wnt-Dkk (S = Wl) + Source** model has the same controls too. Its bump goes into `W`, the first variable, and `A`, `Wd` and `C` start from zero. The switches `sdW`, `sdD` and `sdA` choose which productions the source density multiplies; keep `sdW` and `sdA` on, otherwise the rest state loses its stability where `sd` is high or the head cannot hold there (see the model file).
+
 ## Save your work
 
 | Control | What it saves |
@@ -90,6 +92,7 @@ export individual field profiles.
 | [Mechanochemical](Models/Mechanochemical) | Global coupling, local and normalized kernels, and an oscillating ramp |
 | [Stem cells](Models/StemCells) | Quiescent and active stem-cell populations |
 | [Receptor-based](Models/ReceptorBased) | Non-diffusing receptors with a ligand and a ligand-degrading enzyme (system (5.2) of Münnich, Cygan, André and Marciniak-Czochra), without and with a dynamic source density |
+| [Wnt-Dkk](Models/WntDkk) | The Wnt-Dkk model of Mercker et al. reduced by S = Wl (non-diffusing Wl, diffusing A, Wd and Dkk), without and with a dynamic source density |
 
 <details>
 <summary>Add a model or series preset</summary>

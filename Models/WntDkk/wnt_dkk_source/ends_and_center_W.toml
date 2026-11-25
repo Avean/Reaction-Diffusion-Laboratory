@@ -1,0 +1,26 @@
+name = "W: ends and center"
+description = "Wounds on W at both ends (width 6% of the panel) and the center (width 0.02 of a body of length 1 ≈ 6% of a doublet), height 0.22–0.51, i.e. 0.15–0.35 of the head (W ≈ 1.44 without source density). They straddle the ignition threshold, as the Gierer-Meinhardt wounds 1.5–3.5 straddle h ≈ 2."
+
+[[perturbations]]
+variable = "W"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 0.22
+height_max = 0.51
+
+[[perturbations]]
+variable = "W"
+position = 0.5
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 0.22
+height_max = 0.51
+
+[[perturbations]]
+variable = "W"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 0.22
+height_max = 0.51
