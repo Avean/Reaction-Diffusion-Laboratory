@@ -27,6 +27,7 @@ const C = RDLabAPI.C
         @test find_model("rho_two_piece")[1] == key
     end
 
+    include("test_head_detection.jl")
     include("test_piece_rule.jl")
     include("test_rho_two_piece.jl")
     include("test_doublet.jl")

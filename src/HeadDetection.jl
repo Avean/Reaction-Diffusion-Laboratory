@@ -42,11 +42,13 @@ function _head_prominence(
     left_minimum = peak
     right_minimum = peak
 
-    left_seen = false
-    right_seen = false
+    # A side is open when its search ends without a higher value: at the
+    # boundary of a non-periodic domain, or after a full turn of a periodic one.
+    left_open = true
+    right_open = true
 
     # Search each side until a higher peak is reached.  On a non-periodic
-    # domain the boundary itself serves as the endpoint of the basin.
+    # domain the search stops at the boundary.
     index = start_index
     for _ in 1:(N - 1)
         next_index = _head_neighbor_index(index, -1, N, boundary_condition)
@@ -54,8 +56,10 @@ function _head_prominence(
         index = next_index
         value = Float64(values[index])
         left_minimum = min(left_minimum, value)
-        left_seen = true
-        value > peak && break
+        if value > peak
+            left_open = false
+            break
+        end
         boundary_condition != :periodic && index == 1 && break
     end
 
@@ -66,16 +70,25 @@ function _head_prominence(
         index = next_index
         value = Float64(values[index])
         right_minimum = min(right_minimum, value)
-        right_seen = true
-        value > peak && break
+        if value > peak
+            right_open = false
+            break
+        end
         boundary_condition != :periodic && index == N && break
     end
 
-    # A peak on a Neumann boundary is half of a head mirrored by the boundary:
-    # the side beyond the boundary is the reflection of the other side, so it
-    # takes that side's minimum instead of leaving the prominence at zero.
-    left_seen || (left_minimum = right_minimum)
-    right_seen || (right_minimum = left_minimum)
+    # On a Neumann boundary the profile continues as its mirror image, so an
+    # open side runs, reflected, back over the head and on into the other side:
+    # its basin minimum is the lower of the two, and only a side that meets a
+    # higher value limits the prominence. This covers a peak on the boundary
+    # itself (half of a mirrored head) and a head whose maximum lies a little
+    # inside the panel with a shallow dip at the boundary, such as a plateau
+    # head of the receptor model. With both sides open the peak is the highest
+    # point and its prominence is the whole drop below it. (On a periodic
+    # domain both sides are open only for the highest peak, and each has
+    # then seen every value.)
+    left_open && (left_minimum = min(left_minimum, right_minimum))
+    right_open && (right_minimum = min(right_minimum, left_minimum))
 
     return peak - max(left_minimum, right_minimum)
 end

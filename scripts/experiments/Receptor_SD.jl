@@ -14,8 +14,8 @@
 #     free ends width 6 % of the piece, doublet junction and graft width 0.02 of the body
 #     (0.143), height U(1.5, 3.5); at a graft u = max(u, wound), v = max(v, wound);
 #   - readout at t = 96; a head is an active region {u > 0.9} (the receptor head is a
-#     plateau whose u maximum can lie inside the panel, so the peak detection of
-#     HeadDetection.jl can miss a head at an end); A/B/M/G: the region reaches within
+#     plateau whose u maximum can lie inside the panel, so the region, not the
+#     maximum, says which end the head touches); A/B/M/G: the region reaches within
 #     5 % of the panel of the left end, right end, junction or graft centre.
 #
 # Run (RUNS realizations per variant, default 100; TEST=1 for a quick check):
