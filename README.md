@@ -68,13 +68,15 @@ The series presets of **Rho profile 2 piece** are also available for this model.
 
 **Body length** and **Cut length** start at 7.17 and 2.43, the body and doublet of the RoleOfSource simulations.
 
-The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand. Its parameters are for a body of length 7.17, as in the RoleOfSource simulations: use **Body length** 7.17 and the cut lengths 4.30 (0.6 of the body), 2.15 (0.3) or 2.43 (doublet).
+The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand. Its parameters are for a body of length 7.17, as in the RoleOfSource simulations: use **Body length** 7.17 and the cut lengths 4.30 (0.6 of the body), 2.15 (0.3) or 2.43 (doublet). Its source density is produced linearly by the receptors (`ksd u`, default `ksd = μ1/m1`).
 
-**Load** for **Receptor + Source** also offers **Reference S1**: the same Reference state with the source density of set S1 of the RoleOfSource frozen-SD search (Dsd = 0.562, μsd = 0.052: lower and flatter `sd`); loading it sets these parameters. The series presets named S1 hold the wounds of that set for fragments, doublets and a graft at the middle of the body; read them out with **Freeze SD** at the steady state.
+**Receptor + Source (c)** is the same model with the source density produced by the receptor signal `c = uv/(1+uv)`; until 26.11.2026 it was named Receptor + Source. With the default `ksd` the two give the same source density up to `pu/(m1 μsd)` ≈ 0.009.
+
+**Load** for **Receptor + Source (c)** also offers **Reference S1**: the same Reference state with the source density of set S1 of the RoleOfSource frozen-SD search (Dsd = 0.562, μsd = 0.052: lower and flatter `sd`); loading it sets these parameters. The series presets named S1 hold the wounds of that set for fragments, doublets and a graft at the middle of the body; read them out with **Freeze SD** at the steady state.
 
 The **Wnt-Dkk (S = Wl) + Source** model has the same controls too. Its parameters are for a body of length 7.17, as for the receptor models: use **Body length** 7.17. Its bump goes into `W`, the first variable, and `A`, `Wd` and `C` start from zero. The switches `sdW`, `sdD` and `sdA` choose which productions the source density multiplies; keep `sdW` and `sdA` on, otherwise the rest state loses its stability where `sd` is high or the head cannot hold there (see the model file).
 
-**Load** offers a save named Reference for Receptor, Receptor + Source, Wnt-Dkk (S = Wl) and Wnt-Dkk (S = Wl) + Source: the steady state of the whole body of length 7.17 (N = 300) with one head at the left end, with the default parameters. After loading it, **Cut** and **Cut and run** work at once.
+**Load** offers a save named Reference for Receptor, Receptor + Source, Receptor + Source (c), Wnt-Dkk (S = Wl) and Wnt-Dkk (S = Wl) + Source: the steady state of the whole body of length 7.17 (N = 300) with one head at the left end, with the default parameters. After loading it, **Cut** and **Cut and run** work at once.
 
 ## Save your work
 

@@ -3,7 +3,7 @@
 # The experiments of the RoleOfSource paper (E1 fragments, E2 ring doublets,
 # E3 grafts) for the receptor model without source density
 # (Models/ReceptorBased/receptor, sd ≡ 1) and with it
-# (Models/ReceptorBased/receptor_source, dynamic sd, τ = 500).
+# (Models/ReceptorBased/receptor_source_c, until 26.11.2026 receptor_source: sd produced by the signal c, dynamic sd, τ = 500).
 #
 # Protocol as in RoleOfSource simulations/warianty/licz_ms_tau500_uvE1.jl:
 #   - body of length BODY = 7.17 (as the GM simulations; doublet 2.43), N = 300, Neumann;
@@ -50,7 +50,7 @@ const KIN = (Dv = 0.23134, Dw = 0.43698, m1 = 3.2, m2 = 9.0, m3 = 21.0,
 const SDPAR = (Dsd = 0.17222, μsd = 0.0367)
 const TAU = 500.0
 
-const MODELS = Dict("rec" => :receptor_based, "sd" => :receptor_based_source)
+const MODELS = Dict("rec" => :receptor_based, "sd" => :receptor_based_source_c)
 nvars(m) = m == "sd" ? 4 : 3
 run_params(m) = m == "sd" ? merge(KIN, SDPAR, (τ = TAU,)) : KIN
 ref_params(m) = m == "sd" ? merge(KIN, SDPAR, (τ = 1.0,)) : KIN
