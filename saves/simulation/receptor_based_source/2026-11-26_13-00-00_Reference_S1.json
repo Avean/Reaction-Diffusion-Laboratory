@@ -1,10 +1,10 @@
 {
  "format_version": 1,
  "kind": "simulation",
- "name": "Reference",
+ "name": "Reference S1",
  "saved_at": "2026-11-26T13:00:00",
- "model_id": "receptor_based_source_s1",
- "model_name": "Receptor + Source (S1)",
+ "model_id": "receptor_based_source",
+ "model_name": "Receptor + Source",
  "variables": [
   "u",
   "v",
