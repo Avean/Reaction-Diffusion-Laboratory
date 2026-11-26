@@ -1,0 +1,50 @@
+name = "S1 wounds: doublet (ends and junction)"
+description = "Wounds of set S1 for ring doublets (E2), on receptors u and ligand v, separate draws. Ends: width 6% of the panel, u 2.085–4.865, v 1.781–4.155. Junction at the middle: width 0.0764 of the panel = 0.185 on a doublet of length 2.422 (Cut length 2.43), u 1.193–2.783, v 1.018–2.376. Read out with sd frozen (Freeze SD) at the steady state."
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.085
+height_max = 4.865
+
+[[perturbations]]
+variable = "v"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 1.781
+height_max = 4.155
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.0764
+width_max_fraction = 0.0764
+height_min = 1.193
+height_max = 2.783
+
+[[perturbations]]
+variable = "v"
+position = 0.5
+width_min_fraction = 0.0764
+width_max_fraction = 0.0764
+height_min = 1.018
+height_max = 2.376
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.085
+height_max = 4.865
+
+[[perturbations]]
+variable = "v"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 1.781
+height_max = 4.155

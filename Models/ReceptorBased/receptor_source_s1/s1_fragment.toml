@@ -1,0 +1,34 @@
+name = "S1 wounds: fragment ends (E1)"
+description = "Wounds of set S1 for body fragments (E1), on receptors u and ligand v at both ends, separate draws: width 6% of the panel, u 2.085–4.865, v 1.781–4.155. Read out with sd frozen (Freeze SD) at the steady state."
+
+[[perturbations]]
+variable = "u"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.085
+height_max = 4.865
+
+[[perturbations]]
+variable = "v"
+position = 0.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 1.781
+height_max = 4.155
+
+[[perturbations]]
+variable = "u"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 2.085
+height_max = 4.865
+
+[[perturbations]]
+variable = "v"
+position = 1.0
+width_min_fraction = 0.06
+width_max_fraction = 0.06
+height_min = 1.781
+height_max = 4.155

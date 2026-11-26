@@ -1,0 +1,18 @@
+name = "S1 wound: graft at the middle of the body (E3a)"
+description = "Wound of set S1 for a graft at the middle of the whole body (length 7.17), on receptors u and ligand v, separate draws: width 0.0258 of the panel = 0.185, u 1.193–2.783, v 1.018–2.376. For other graft sites change the position. The search used max(field, wound) at the graft; the series window adds the wound."
+
+[[perturbations]]
+variable = "u"
+position = 0.5
+width_min_fraction = 0.0258
+width_max_fraction = 0.0258
+height_min = 1.193
+height_max = 2.783
+
+[[perturbations]]
+variable = "v"
+position = 0.5
+width_min_fraction = 0.0258
+width_max_fraction = 0.0258
+height_min = 1.018
+height_max = 2.376
