@@ -29,12 +29,12 @@ const HALF_OPERATIONS = (
     :copy_right_to_left,
 )
 
-# Cut and run starts the whole body from u = 0 (every variable that cannot be
+# Cut and run starts the whole body from zero (every variable that cannot be
 # frozen is zero, the source density keeps the model's initial condition)
-# with this bump of the first variable at the left end, so that a single head
-# forms there: height, and width as a fraction of the body (cos² profile).
-const CUT_RUN_BUMP_HEIGHT = 4.0
-const CUT_RUN_BUMP_WIDTH = 0.1
+# with a cos² bump at the left end, so that a single head forms there. Its
+# heights, one per variable, are the model's (ModelSpec.cut_run_bump: by
+# default CUT_RUN_BUMP_HEIGHT on the first variable only) or the Bump fields
+# of the window; its width is CUT_RUN_BUMP_WIDTH of the body (Types.jl).
 
 
 "Grid points of the left and the right half of a panel of `N` points."
@@ -187,16 +187,18 @@ end
 The whole body Cut and run starts from: a Neumann panel of `N` points and
 physical length `body_length`, with the parameters `params` (unfrozen), the
 model's initial condition for the freezable variables (the source density),
-zero for every other variable, and a bump of the first variable (u) at the
-left end: `bump_height` · cos²(π s / (2 · bump_width)) for s < bump_width,
-where s is the fraction of the body from the left end.
+zero for every other variable, and a bump at the left end added to every
+variable j: `bump_heights[j]` · cos²(π s / (2 · bump_width)) for
+s < bump_width, where s is the fraction of the body from the left end.
+`bump_heights` has one height per variable (finite, ≥ 0, at least one
+positive); by default the model's `cut_run_bump`.
 """
 function cut_run_initial_state(
     model::ModelSpec,
     params::AbstractDict{Symbol};
     N::Int,
     body_length::Real,
-    bump_height::Real = CUT_RUN_BUMP_HEIGHT,
+    bump_heights::AbstractVector{<:Real} = model.cut_run_bump,
     bump_width::Real = CUT_RUN_BUMP_WIDTH,
     dtmax::Float64 = 1e10,
     reltol::Float64 = 1e-5,
@@ -207,6 +209,7 @@ function cut_run_initial_state(
     isfinite(L) && L > 0.0 || error("The body length must be a positive number.")
     w = Float64(bump_width)
     0.0 < w <= 1.0 || error("The bump width must be a fraction of the body between 0 and 1.")
+    heights = validate_cut_run_bump(bump_heights, model.varnames)
 
     parameters = Dict{Symbol, Any}(params)
     parameters[DIFFUSION_SCALE_PARAM] = L^2
@@ -232,7 +235,10 @@ function cut_run_initial_state(
     extent = last(sim.x) - x0
     for (i, xi) in enumerate(sim.x)
         s = (xi - x0) / extent
-        s < w && (U[i, 1] += Float64(bump_height) * cos(π * s / (2w))^2)
+        s < w || continue
+        for j in 1:model.nvars
+            U[i, j] += heights[j] * cos(π * s / (2w))^2
+        end
     end
 
     restart_after_manual_change!(sim, vec(U); reltol = reltol, abstol = abstol)
@@ -251,6 +257,9 @@ check interval, consecutive checks, dtmax, maximum time and steps), the rate
 of each freezable variable weighted by its time scale (freezable_rate_weights),
 then the freezable variables frozen and the centred piece of `cut_length` cut out.
 
+`bump_heights` (one per variable, by default the model's `cut_run_bump`) and
+`bump_width` shape the bump of the initial state.
+
 Returns `(cancelled, outcome, body, state, length)`: the series outcome of
 the whole body (converged, time, steps, residual, heads), the body, and the
 piece with its length (both `nothing` when `cancelled()` stopped the run).
@@ -264,7 +273,7 @@ function cut_and_run(
     cut_length::Real,
     settings::SeriesSettings = SeriesSettings(),
     cut_dtmax::Float64 = 1e-2,
-    bump_height::Real = CUT_RUN_BUMP_HEIGHT,
+    bump_heights::AbstractVector{<:Real} = model.cut_run_bump,
     bump_width::Real = CUT_RUN_BUMP_WIDTH,
     cancelled::Function = () -> false,
     on_residual::Function = _ -> nothing,
@@ -280,7 +289,7 @@ function cut_and_run(
         params;
         N = N,
         body_length = body_length,
-        bump_height = bump_height,
+        bump_heights = bump_heights,
         bump_width = bump_width,
         dtmax = run_settings.dtmax,
         reltol = run_settings.reltol,

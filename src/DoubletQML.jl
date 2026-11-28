@@ -32,6 +32,74 @@ function parse_positive_length(text, what::AbstractString)
 end
 
 
+# ------------------------------------------------------------
+# Bump fields of Cut and run
+# ------------------------------------------------------------
+#
+# One field per variable under the Cut and run button, filled with the
+# model's heights (ModelSpec.cut_run_bump). The fields live in QML; a model
+# change or a Load gives them a new revision, which rebuilds them with the
+# model's values (reset_cut_run_bump_fields!).
+
+bump_height_text(height::Real) = @sprintf("%.15g", Float64(height))
+
+
+function cut_run_bump_json(model::RD.ModelSpec, revision::Int)
+    fields = [
+        "{\"name\":" * json_string(name) * ",\"value\":" * json_string(bump_height_text(height)) * "}"
+        for (name, height) in zip(model.varnames, model.cut_run_bump)
+    ]
+    return "{\"revision\":" * string(revision) * ",\"fields\":[" * join(fields, ",") * "]}"
+end
+
+
+function reset_cut_run_bump_fields!(controller::QMLController)
+    state = controller.cut_run
+    state.bump_revision += 1
+    controller.bindings.cut_run_bump_json[] =
+        cut_run_bump_json(controller.app.sim.model, state.bump_revision)
+    return nothing
+end
+
+
+"""
+    parse_cut_run_bump(model, bump_text) -> Vector{Float64}
+
+The heights typed in the Bump fields: `bump_text` is a JSON list of the
+field texts in the order of the model's variables. Checked as the model's
+own heights are (validate_cut_run_bump).
+"""
+function parse_cut_run_bump(model::RD.ModelSpec, bump_text)
+    texts = try
+        JSON.parse(String(bump_text))
+    catch
+        nothing
+    end
+    texts isa AbstractVector && all(text -> text isa AbstractString, texts) ||
+        error("The Bump fields could not be read.")
+    length(texts) == model.nvars ||
+        error("There are $(length(texts)) Bump fields for the $(model.nvars) variables of the model; select the model again.")
+
+    heights = Float64[]
+    for (name, text) in zip(model.varnames, texts)
+        value = tryparse(Float64, strip(text))
+        value === nothing && error("Bump $name: '$text' is not a number.")
+        push!(heights, value)
+    end
+
+    return RD.validate_cut_run_bump(heights, model.varnames)
+end
+
+
+function bump_summary(model::RD.ModelSpec, heights::AbstractVector{<:Real})
+    parts = [
+        "$name $(bump_height_text(height))"
+        for (name, height) in zip(model.varnames, heights) if height != 0.0
+    ]
+    return join(parts, ", ")
+end
+
+
 # The interface after the plots were rebuilt (Freeze SD, Cut, Cut and run).
 # In series mode the series setup of the panel stays, with its previews.
 function refresh_after_source_tool!(controller::QMLController; reset_selection::Bool)
@@ -112,7 +180,7 @@ function cut_center!(controller::QMLController, length_text)
 end
 
 
-function start_cut_and_run!(controller::QMLController, body_text, cut_text)
+function start_cut_and_run!(controller::QMLController, body_text, cut_text, bump_text)
     return guarded_action(controller, "Cut and run failed") do
         require_source_tools_idle(controller)
         controller.graphics_busy[] && error("Wait until the plots have been updated.")
@@ -129,6 +197,7 @@ function start_cut_and_run!(controller::QMLController, body_text, cut_text)
         body_length = parse_positive_length(body_text, "Body length")
         cut_length = parse_positive_length(cut_text, "Cut length")
         cut_length <= body_length || error("The cut length must not exceed the body length.")
+        bump_heights = parse_cut_run_bump(model, bump_text)
 
         # The current parameters (not the domain length, which Cut and run
         # sets), the series settings for the stationarity check, the grid of
@@ -150,9 +219,10 @@ function start_cut_and_run!(controller::QMLController, body_text, cut_text)
             state.result = nothing
             state.error = nothing
             state.status = @sprintf(
-                "Cut and run: whole body of length %.6g (N = %d), running to a steady state",
+                "Cut and run: whole body of length %.6g (N = %d, bump %s), running to a steady state",
                 body_length,
                 N,
+                bump_summary(model, bump_heights),
             )
         end
         state.model_id = model.id
@@ -181,6 +251,7 @@ function start_cut_and_run!(controller::QMLController, body_text, cut_text)
                     cut_length = cut_length,
                     settings = settings,
                     cut_dtmax = cut_dtmax,
+                    bump_heights = bump_heights,
                     cancelled = () -> state.cancel[],
                     on_residual = report_residual,
                 )

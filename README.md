@@ -61,18 +61,18 @@ The Gierer–Meinhardt **Source** model has extra controls in **Models**.
 
 - **Freeze SD** stops the source density `sd`: its reaction and diffusion are zero, so it acts as a fixed profile, drawn red and dashed.
 - **Cut** keeps a piece of the given length from the middle of the domain. The domain becomes `[0, length]` and keeps its grid points; the length snaps to an even number of points, so the two halves match exactly.
-- **Cut and run** starts the whole body of the given length from `u = v = 0` with a large bump of `u` at the left end, which grows into a single head. It runs to a steady state with the series check (tolerance and limits from the series window; the rate of `sd` counts times `τ`, so `sd` must reach its equilibrium), then cuts the piece and freezes SD. It needs Neumann boundary conditions.
+- **Cut and run** starts the whole body of the given length from zero (`sd` from the model's initial condition) with a bump at the left end, which grows into a single head. The **Bump** row under the buttons has one field per variable: the height of the bump (a cos² over 0.1 of the body) added to that variable. The fields start at the model's heights, a large bump of the first variable (`u = 4`) unless the model declares others, and return to them when you change the model or load a save. Cut and run runs the body to a steady state with the series check (tolerance and limits from the series window; the rate of `sd` counts times `τ`, so `sd` must reach its equilibrium), then cuts the piece and freezes SD. It needs Neumann boundary conditions.
 - **Swap halves**, **Flip left**, **Flip right**, **Copy left → right** and **Copy right → left** rearrange `u`, `v` and `sd` together. Each click acts on the current state, so **Save** first and use **Load** to go back.
 
 The series presets of **Rho profile 2 piece** are also available for this model.
 
 **Body length** and **Cut length** start at 7.17 and 2.43, the body and doublet of the RoleOfSource simulations.
 
-The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, and **Cut and run** relies on the small basal productions `pu` and `pv` to start the ligand. Its parameters are for a body of length 7.17, as in the RoleOfSource simulations: use **Body length** 7.17 and the cut lengths 4.30 (0.6 of the body), 2.15 (0.3) or 2.43 (doublet). Its source density is produced linearly by the receptors (`ksd u`, default `ksd = μ1/m1`).
+The **Receptor + Source** model has the same controls. Its head forms only when both receptors `u` and ligand `v` are raised, so its **Bump** starts at `u = 4`, `v = 1`. The receptors do not diffuse, so a small basal production `pu` keeps them off the state `u ≡ 0`, which would otherwise be invariant and make the width of a head depend on the initial data. The ligand diffuses and has no basal production (`pv = 0` since 27.11.2026, in every receptor model): **Cut and run** starts it with its bump. Its parameters are for a body of length 7.17, as in the RoleOfSource simulations: use **Body length** 7.17 and the cut lengths 4.30 (0.6 of the body), 2.15 (0.3) or 2.43 (doublet). Its source density is produced linearly by the receptors (`ksd u`, default `ksd = μ1/m1`).
 
 **Receptor + Source (c)** is the same model with the source density produced by the receptor signal `c = uv/(1+uv)`; until 26.11.2026 it was named Receptor + Source. With the default `ksd` the two give the same source density up to `pu/(m1 μsd)` ≈ 0.009.
 
-**Load** for **Receptor + Source (c)** also offers **Reference S1**: the same Reference state with the source density of set S1 of the RoleOfSource frozen-SD search (Dsd = 0.562, μsd = 0.052: lower and flatter `sd`) and without the basal ligand production (`pv = 0`, since 27.11.2026); loading it sets these parameters. With `pv = 0` **Cut and run** does not start a head (its bump raises only `u`, and the ligand stays at zero), so load the save and use **Cut**. The series presets named S1 hold the wounds of that set for fragments, doublets and a graft at the middle of the body; read them out with **Freeze SD** at the steady state.
+**Load** for **Receptor + Source (c)** also offers **Reference S1**: the same Reference state with the source density of set S1 of the RoleOfSource frozen-SD search (Dsd = 0.562, μsd = 0.052: lower and flatter `sd`) and without the basal ligand production (`pv = 0`, the default since 27.11.2026); loading it sets these parameters. The series presets named S1 hold the wounds of that set for fragments, doublets and a graft at the middle of the body; read them out with **Freeze SD** at the steady state.
 
 The **Wnt-Dkk (S = Wl) + Source** model has the same controls too. Its parameters are for a body of length 7.17, as for the receptor models: use **Body length** 7.17. Its bump goes into `W`, the first variable, and `A`, `Wd` and `C` start from zero. The switches `sdW`, `sdD` and `sdA` choose which productions the source density multiplies; keep `sdW` and `sdA` on, otherwise the rest state loses its stability where `sd` is high or the head cannot hold there (see the model file).
 
@@ -112,7 +112,9 @@ the model's save folder. The solver provides the physical domain length
 through `p.domain_length`. List slow variables in `freezable = (:sd,)` to get
 the parameter `frozen` and the **Freeze SD** control; `freezable = (sd = :τ,)`
 also names the time scale the variable's equation is divided by, so that
-**Cut and run** waits until it reaches its equilibrium.
+**Cut and run** waits until it reaches its equilibrium. `cut_run_bump =
+(u = 4.0, v = 1.0)` sets the heights of the **Cut and run** bump (the
+variables not named get 0); without it the bump is 4 on the first variable.
 
 Put series presets in TOML files beside the model. The
 [Rho independent preset](Models/GiererMeinhardt/rho_independent/left_center_right.toml) shows

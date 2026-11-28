@@ -758,6 +758,27 @@ function _make_latex_equations(latex_equations)
     end
 end
 
+# Heights of the Cut and run bump, one per variable, from
+# cut_run_bump = (u = 4.0, v = 1.0): the variables not named get 0. Without
+# the declaration (nothing), the first variable gets CUT_RUN_BUMP_HEIGHT.
+function _make_cut_run_bump(cut_run_bump, vars, var_index)
+    cut_run_bump === nothing && return default_cut_run_bump(length(vars))
+
+    cut_run_bump isa NamedTuple ||
+        error("cut_run_bump must name variables with their heights, e.g. cut_run_bump = (u = 4.0, v = 1.0).")
+
+    heights = zeros(Float64, length(vars))
+    for (var, height) in pairs(cut_run_bump)
+        haskey(var_index, var) ||
+            error("cut_run_bump: $(var) is not a model variable ($(join(vars, ", "))).")
+        height isa Real && !(height isa Bool) ||
+            error("cut_run_bump: the height of $(var) must be a number.")
+        heights[var_index[var]] = Float64(height)
+    end
+
+    return validate_cut_run_bump(heights, string.(vars))
+end
+
 function RDModel(;
     id::Symbol,
     display_name::String,
@@ -771,9 +792,11 @@ function RDModel(;
     spatial_profiles = NamedTuple(),
     latex_equations = String[],
     freezable = (),
+    cut_run_bump = nothing,
 )
     vars = _normalize_variables(variables)
     var_index = _make_variable_index(vars)
+    cut_run_heights = _make_cut_run_bump(cut_run_bump, vars, var_index)
 
     parameters isa NamedTuple ||
         error("parameters must be a NamedTuple.")
@@ -950,6 +973,7 @@ function RDModel(;
         latex_equations = _make_latex_equations(latex_equations),
         freezable_variables = freezable_indices,
         freezable_time_scales = freezable_time_scales,
+        cut_run_bump = cut_run_heights,
     )
 end
 

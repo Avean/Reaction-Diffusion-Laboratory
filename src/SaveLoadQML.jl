@@ -208,6 +208,8 @@ function load_simulation_save!(
         controller.boundary_name_obs[] = RD.boundary_condition_label(app.initial_boundary_condition)
         controller.selected_segment = 1
         update_model_bindings!(controller)
+        # The Bump fields of Cut and run return to the model's heights.
+        reset_cut_run_bump_fields!(controller)
         refresh_current_equation_image!(controller)
         update_partition_bindings!(controller; reset_index = true)
         # A save holds nothing of the series: its setup stays for the panels

@@ -1119,13 +1119,72 @@ ApplicationWindow {
                                         dark: false
                                         text: "Cut and run"
                                         enabled: window.controlsEnabled
-                                        onClicked: Julia.cutAndRun(bodyLengthField.text, cutLengthField.text)
+                                        onClicked: Julia.cutAndRun(bodyLengthField.text, cutLengthField.text,
+                                                                   JSON.stringify(bumpFields.texts()))
+                                    }
+                                }
+
+                                // Heights of the Cut and run bump, one field per variable.
+                                // A model change or a Load gives the JSON a new revision,
+                                // which rebuilds the fields with the model's heights.
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.preferredWidth: 90
+                                        Layout.alignment: Qt.AlignTop
+                                        topPadding: 8
+                                        text: "Bump"
+                                        color: "#20252d"
+                                    }
+
+                                    Flow {
+                                        id: bumpFields
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        readonly property var fields: JSON.parse(ui.cutRunBumpJson).fields
+
+                                        function texts() {
+                                            const values = []
+                                            for (let index = 0; index < bumpRepeater.count; ++index)
+                                                values.push(bumpRepeater.itemAt(index).text)
+                                            return values
+                                        }
+
+                                        Repeater {
+                                            id: bumpRepeater
+                                            model: bumpFields.fields
+
+                                            Row {
+                                                id: bumpEntry
+                                                required property var modelData
+                                                property alias text: bumpValue.text
+                                                spacing: 4
+
+                                                Label {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: bumpEntry.modelData.name
+                                                    color: "#20252d"
+                                                }
+
+                                                TextField {
+                                                    id: bumpValue
+                                                    width: 56
+                                                    text: bumpEntry.modelData.value
+                                                    selectByMouse: true
+                                                    enabled: window.controlsEnabled
+                                                    validator: DoubleValidator { notation: DoubleValidator.StandardNotation; bottom: 0; locale: "C" }
+                                                    onActiveFocusChanged: window.textEditorFocused = activeFocus
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
                                 Label {
                                     Layout.fillWidth: true
-                                    text: "Cut keeps the middle of the domain; the domain becomes [0, length]. Cut and run starts the whole body from u = v = 0 with a large u bump at the left end, runs it to a steady state, then cuts and freezes SD."
+                                    text: "Cut keeps the middle of the domain; the domain becomes [0, length]. Cut and run starts the whole body from zero (SD from the model's initial condition), adds the Bump heights at the left end (cos² over 0.1 of the body), runs it to a steady state, then cuts and freezes SD. Changing the model or loading a save restores the model's Bump heights."
                                     wrapMode: Text.WordWrap
                                     color: "#68717d"
                                     font.italic: true

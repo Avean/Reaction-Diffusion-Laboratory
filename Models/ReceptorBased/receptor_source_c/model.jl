@@ -37,8 +37,15 @@
 # state (u, v, w, sd) ≈ (1.20, 0.297, 56.6, 7.17) is stable without
 # diffusion and Turing unstable with it.
 #
+# Basal productions (see the receptor model): pu = 1e-3 keeps the floor of
+# the non-diffusing receptors (without it u ≡ 0 is invariant and the width of
+# a head depends on the initial data); pv = 0 since 27.11.2026 (it was 1e-3):
+# the ligand diffuses and needs no floor.
+#
 # Freeze SD and the other Source tools work as in the Gierer-Meinhardt
-# Source model; Cut and run (bump of u at the left end) gives one head.
+# Source model. The head ignites only where both u and v rise, so Cut and run
+# puts its bump on both (cut_run_bump: u = 4, v = 1) and needs no pv; it
+# gives one head at the left end.
 #
 # ============================================================
 
@@ -53,6 +60,10 @@ RDModel(
     # Freeze SD (frozen = 1) keeps sd at its current values. Its equation is
     # divided by τ, so Cut and run measures its rate times τ.
     freezable = (sd = :τ,),
+
+    # Cut and run raises receptors and ligand at the left end: a bump of u
+    # alone does not ignite a head (with pv = 0 the ligand would stay zero).
+    cut_run_bump = (u = 4.0, v = 1.0),
 
     parameters = (
         τ = 500.0,
@@ -71,8 +82,10 @@ RDModel(
         μ3 = 0.7,
         μsd = 0.0367,
 
+        # Basal productions: pu keeps the floor of the non-diffusing u; pv = 0
+        # since 27.11.2026 (it was 1e-3).
         pu = 1e-3,
-        pv = 1e-3,
+        pv = 0.0,
 
         # Initial condition: 1 = one head at the right end and sd = 1,
         # 0 = upper homogeneous state with 1 % noise.

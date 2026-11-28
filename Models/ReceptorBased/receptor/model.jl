@@ -15,13 +15,19 @@
 #
 #     u = receptors (no diffusion), v = ligand, w = enzyme degrading the ligand
 #
-# Additions to (5.2), both tiny and off in the paper:
+# Additions to (5.2), off in the paper:
 #
-#   - pu, pv: basal production of receptors and ligand. u = 0 and v = 0 are
-#     invariant in (5.2), so without them a region whose u or v has decayed
-#     to round-off can never be reactivated, and the patterns would depend
-#     on how small those values became. pu = pv = 1e-3 keep a floor; the
-#     resting state (pu/μ1, ~pv/μ2, ~0) stays stable.
+#   - pu: basal production of receptors (default 1e-3). u does not diffuse,
+#     so without pu the state u ≡ 0 is invariant: a region whose u has
+#     decayed to round-off can never be reactivated, and the width of a head
+#     would depend on the initial data. pu keeps the floor u ≥ pu/μ1; the
+#     resting state (pu/μ1, 0, 0) is stable.
+#   - pv: basal production of the ligand, 0 since 27.11.2026 (before: 1e-3).
+#     v diffuses, so it needs no floor of its own; Cut and run raises v with
+#     its bump (cut_run_bump in the Source models) instead of relying on pv.
+#     In the frozen-SD protocol of RoleOfSource (set S1, 200 realizations,
+#     the same seeds) pv = 0 changed no result by more than 3 percentage
+#     points.
 #   - c uses max(u, 0) and max(v, 0): negative round-off values relax to 0
 #     instead of being amplified towards the pole u v = -1.
 #
@@ -47,7 +53,7 @@ RDModel(
     id = :receptor_based,
 
     display_name = "Receptor",
-    description = "Receptor-based model (5.2) of Münnich, Cygan, André and Marciniak-Czochra: non-diffusing receptors u, slowly diffusing ligand v and fast-diffusing enzyme w that degrades the ligand. Tiny basal productions pu, pv keep u and v off the invariant zero state. Defaults: GM-like regime on a body of length 7.17 (set the domain length to 7.17). ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
+    description = "Receptor-based model (5.2) of Münnich, Cygan, André and Marciniak-Czochra: non-diffusing receptors u, slowly diffusing ligand v and fast-diffusing enzyme w that degrades the ligand. A tiny basal production pu keeps the non-diffusing u off the invariant zero state; the ligand has none (pv = 0 since 27.11.2026). Defaults: GM-like regime on a body of length 7.17 (set the domain length to 7.17). ic_head = 1 starts with one head at the right end, ic_head = 0 near the upper homogeneous state with 1 % noise.",
 
     variables = (:u, :v, :w),
 
@@ -64,8 +70,10 @@ RDModel(
         μ2 = 0.6,
         μ3 = 0.7,
 
+        # Basal productions: pu keeps the floor of the non-diffusing u; pv = 0
+        # since 27.11.2026 (it was 1e-3).
         pu = 1e-3,
-        pv = 1e-3,
+        pv = 0.0,
 
         # Initial condition: 1 = one head at the right end, 0 = upper
         # homogeneous state with 1 % noise.

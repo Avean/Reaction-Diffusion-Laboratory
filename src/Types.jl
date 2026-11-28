@@ -8,6 +8,17 @@
 # Model specification
 # ============================================================
 
+# Cut and run (Doublet.jl) starts the whole body with a cos² bump at the left
+# end, so that a single head forms there: its width as a fraction of the
+# body, and its height on the first variable of a model that declares no
+# heights of its own (RDModel(...; cut_run_bump = (u = 4.0, v = 1.0))).
+const CUT_RUN_BUMP_HEIGHT = 4.0
+const CUT_RUN_BUMP_WIDTH = 0.1
+
+"Bump heights of Cut and run for a model that declares none: the first variable only."
+default_cut_run_bump(nvars::Integer) =
+    Float64[j == 1 ? CUT_RUN_BUMP_HEIGHT : 0.0 for j in 1:nvars]
+
 Base.@kwdef struct ModelSpec
     id::Symbol
     # Short internal model identifier, for example :fisher_kpp or :schnakenberg.
@@ -80,6 +91,36 @@ Base.@kwdef struct ModelSpec
     # equation is divided by (a parameter name such as :τ, a number, or
     # nothing for 1), declared with freezable = (sd = :τ,). Cut and run
     # weights the variable's rate by it in the stationarity check.
+
+    cut_run_bump::Vector{Float64} = default_cut_run_bump(nvars)
+    # Height of the bump Cut and run adds at the left end, one per variable
+    # (length nvars). Declared with RDModel(...; cut_run_bump = (u = 4.0,
+    # v = 1.0)); the variables not named get 0. Without it, the first
+    # variable gets CUT_RUN_BUMP_HEIGHT and the others 0.
+end
+
+
+"""
+    validate_cut_run_bump(heights, varnames) -> Vector{Float64}
+
+The bump heights of Cut and run, one per variable, checked: finite, not
+negative, and at least one of them positive. The errors name the variable.
+"""
+function validate_cut_run_bump(
+    heights::AbstractVector{<:Real},
+    varnames::AbstractVector{<:AbstractString},
+)
+    length(heights) == length(varnames) ||
+        error("Cut and run needs one bump height per variable ($(join(varnames, ", "))), not $(length(heights)).")
+
+    values = Float64.(heights)
+    for (name, height) in zip(varnames, values)
+        isfinite(height) && height >= 0.0 ||
+            error("The bump height of $name must be a finite number ≥ 0, not $height.")
+    end
+    any(>(0.0), values) || error("At least one bump height must be positive.")
+
+    return values
 end
 
 
@@ -96,6 +137,8 @@ function validate_model(model::ModelSpec)
     if !isnothing(model.default_boundary_condition)
         validate_boundary_condition(model.default_boundary_condition)
     end
+
+    validate_cut_run_bump(model.cut_run_bump, model.varnames)
 
     return true
 end

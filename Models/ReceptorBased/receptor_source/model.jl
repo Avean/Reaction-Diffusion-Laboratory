@@ -20,7 +20,7 @@
 # that model is now Models/ReceptorBased/receptor_source_c (Receptor + Source
 # (c)). At the steady state u = (pu + m1 c)/μ1, so ksd u = c + pu/m1 for the
 # default ksd = μ1/m1: the source density is that of the c model plus
-# pu/(m1 μsd) ≈ 0.009 (a basal level: at rest u = pu/μ1 > 0, while c ≈ 1e-6),
+# pu/(m1 μsd) ≈ 0.009 (a basal level: at rest u = pu/μ1 > 0, while c = 0),
 # and the two models agree up to this shift.
 #
 # Why not sd in the receptor production: the head then carries u ≈ sd m1/μ1,
@@ -36,8 +36,15 @@
 # the Reference profile of the Gierer-Meinhardt Source model of the
 # RoleOfSource paper (3.99, 1.51, 0.89, 0.55, 0.33).
 #
+# Basal productions (see the receptor model): pu = 1e-3 keeps the floor of
+# the non-diffusing receptors (without it u ≡ 0 is invariant and the width of
+# a head depends on the initial data); pv = 0 since 27.11.2026 (it was 1e-3):
+# the ligand diffuses and needs no floor.
+#
 # Freeze SD and the other Source tools work as in the Gierer-Meinhardt
-# Source model; Cut and run (bump of u at the left end) gives one head.
+# Source model. The head ignites only where both u and v rise, so Cut and run
+# puts its bump on both (cut_run_bump: u = 4, v = 1) and needs no pv; it
+# gives one head at the left end.
 #
 # ============================================================
 
@@ -52,6 +59,10 @@ RDModel(
     # Freeze SD (frozen = 1) keeps sd at its current values. Its equation is
     # divided by τ, so Cut and run measures its rate times τ.
     freezable = (sd = :τ,),
+
+    # Cut and run raises receptors and ligand at the left end: a bump of u
+    # alone does not ignite a head (with pv = 0 the ligand would stay zero).
+    cut_run_bump = (u = 4.0, v = 1.0),
 
     parameters = (
         τ = 500.0,
@@ -73,8 +84,10 @@ RDModel(
         # Production of sd per receptor: μ1/m1 gives the sd of Receptor + Source (c).
         ksd = 0.21875,
 
+        # Basal productions: pu keeps the floor of the non-diffusing u; pv = 0
+        # since 27.11.2026 (it was 1e-3).
         pu = 1e-3,
-        pv = 1e-3,
+        pv = 0.0,
 
         # Initial condition: 1 = one head at the right end and sd = 1,
         # 0 = upper homogeneous state with 1 % noise.

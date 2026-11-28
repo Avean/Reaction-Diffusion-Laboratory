@@ -139,4 +139,76 @@
 
         @test_throws ErrorException C.cut_and_run(model, params; N = 40, body_length = 1.0, cut_length = 2.0)
     end
+
+    @testset "Cut and run bump" begin
+        default_params(model) = Dict{Symbol, Any}(name => model.default_params[name]
+                                                  for name in C.public_model_parameter_names(model))
+        # cos² over the first CUT_RUN_BUMP_WIDTH of the body, 1 at the left end.
+        function bump_profile(sim)
+            s = (sim.x .- first(sim.x)) ./ (last(sim.x) - first(sim.x))
+            w = C.CUT_RUN_BUMP_WIDTH
+            return [si < w ? cos(π * si / (2w))^2 : 0.0 for si in s]
+        end
+
+        # A model without cut_run_bump: the first variable only, height 4.
+        _, gm = find_model(:gierer_meinhardt_source)
+        @test gm.cut_run_bump == [C.CUT_RUN_BUMP_HEIGHT, 0.0, 0.0]
+        @test C.CUT_RUN_BUMP_HEIGHT == 4.0
+        sim = C.cut_run_initial_state(gm, default_params(gm); N = 101, body_length = 2.0)
+        U = C.solution_matrix(sim)
+        g = bump_profile(sim)
+        @test count(>(0.0), g) == 10
+        @test U[:, 1] ≈ 4.0 .* g
+        @test U[1, 1] == 4.0
+        @test all(iszero, U[:, 2])
+        # sd keeps the model's initial condition (1 + 1 % noise), with no bump.
+        @test all(abs.(U[:, 3] .- 1.0) .< 0.1)
+
+        # Receptor + Source (c): cut_run_bump = (u = 4.0, v = 1.0).
+        _, receptor = find_model(:receptor_based_source_c)
+        @test receptor.varnames == ["u", "v", "w", "sd"]
+        @test receptor.cut_run_bump == [4.0, 1.0, 0.0, 0.0]
+        sim = C.cut_run_initial_state(receptor, default_params(receptor); N = 101, body_length = 7.17)
+        U = C.solution_matrix(sim)
+        g = bump_profile(sim)
+        @test U[:, 1] ≈ 4.0 .* g
+        @test U[:, 2] ≈ g
+        @test all(iszero, U[:, 3])
+        @test all(==(1.0), U[:, 4])      # ic_head = 1: sd = 1
+        @test C.diffusion_scale(sim.params) ≈ 7.17^2
+        @test sim.params[:frozen] == 0.0
+
+        # Heights passed by the caller (the Bump fields) replace the model's;
+        # a height of a freezable variable adds to its initial values.
+        sim = C.cut_run_initial_state(receptor, default_params(receptor); N = 101, body_length = 7.17,
+            bump_heights = [0.0, 2.5, 0.0, 0.5])
+        U = C.solution_matrix(sim)
+        @test all(iszero, U[:, 1])
+        @test U[:, 2] ≈ 2.5 .* g
+        @test U[:, 4] ≈ 1.0 .+ 0.5 .* g
+        for heights in ([4.0, 1.0, 0.0], [4.0, -1.0, 0.0, 0.0], [NaN, 1.0, 0.0, 0.0], [Inf, 0.0, 0.0, 0.0], zeros(4))
+            @test_throws ErrorException C.cut_run_initial_state(receptor, default_params(receptor);
+                N = 101, body_length = 7.17, bump_heights = heights)
+        end
+        @test_throws ErrorException C.cut_and_run(receptor, default_params(receptor); N = 40,
+            body_length = 7.17, cut_length = 2.43, bump_heights = zeros(4))
+
+        # The declaration in RDModel(...).
+        declare(bump) = C.RDModel(
+            id = :bump_test,
+            display_name = "Bump test",
+            variables = (:u, :v, :w),
+            parameters = (a = 1.0,),
+            initial = (U, x, p) -> nothing,
+            reaction = (F, U, x, p, t) -> nothing,
+            cut_run_bump = bump,
+        )
+        @test declare(nothing).cut_run_bump == [4.0, 0.0, 0.0]
+        @test declare((v = 1.5,)).cut_run_bump == [0.0, 1.5, 0.0]
+        @test declare((w = 2, u = 0.5)).cut_run_bump == [0.5, 0.0, 2.0]
+        for bad in ((z = 1.0,), (u = -1.0,), (u = Inf,), (u = NaN,), (u = 0.0, v = 0.0),
+                    (u = "4",), (u = true,), 4.0, (:u,))
+            @test_throws ErrorException declare(bad)
+        end
+    end
 end

@@ -132,6 +132,9 @@ mutable struct QMLBindings
     cut_run_running::Observable{Bool}
     cut_run_status::Observable{String}
     # Cut and run of the Source tools: running, and its progress text.
+    cut_run_bump_json::Observable{String}
+    # The Bump fields of Cut and run: the model's height of every variable
+    # and a revision that changes whenever the fields return to them.
 end
 
 
@@ -221,6 +224,8 @@ mutable struct CutRunState
     result::Any
     error::Any
     model_id::Symbol
+    bump_revision::Int
+    # Counts the resets of the Bump fields (model change, Load).
 end
 
 empty_cut_run_state() = CutRunState(
@@ -232,6 +237,7 @@ empty_cut_run_state() = CutRunState(
     nothing,
     nothing,
     :none,
+    0,
 )
 
 
@@ -2914,6 +2920,7 @@ function select_model!(controller::QMLController, key)
         controller.bindings.active_model_key[] = key_string
         controller.selected_segment = 1
         update_model_bindings!(controller)
+        reset_cut_run_bump_fields!(controller)
         refresh_current_equation_image!(controller)
         update_partition_bindings!(controller; reset_index = true)
         clear_series_perturbations!(controller)
@@ -3450,7 +3457,8 @@ function register_qml_functions!(controller::QMLController)
     )
     QML.qmlfunction(
         "cutAndRun",
-        (body_text, cut_text) -> start_cut_and_run!(controller, body_text, cut_text),
+        (body_text, cut_text, bump_text) ->
+            start_cut_and_run!(controller, body_text, cut_text, bump_text),
     )
     QML.qmlfunction("stopCutAndRun", () -> stop_cut_and_run!(controller))
     QML.qmlfunction(
@@ -3648,6 +3656,7 @@ function qml_property_map(
         "notice" => bindings.notice,
         "cutRunRunning" => bindings.cut_run_running,
         "cutRunStatus" => bindings.cut_run_status,
+        "cutRunBumpJson" => bindings.cut_run_bump_json,
         "modelCatalogJson" => Observable(catalog_json),
         "message" => bindings.message,
         "graphicsBusy" => controller.graphics_busy,
@@ -3832,6 +3841,7 @@ function create_qml_controller(;
         Observable("{}"),
         Observable(false),
         Observable(""),
+        Observable(cut_run_bump_json(first_model, 0)),
     )
     controller = QMLController(
         app,

@@ -207,6 +207,39 @@ function drive_application()
         GUI["ranges"] = ranges
         Q.set_series_mode!(c, false)
         check_message(c, "Leaving series mode after presets")
+
+        # The Bump fields of Cut and run: the model's heights, restored (new
+        # revision) by a model change and by Load; Cut and run uses the
+        # heights it is given and refuses invalid ones.
+        function bump_fields()
+            parsed = Q.JSON.parse(c.bindings.cut_run_bump_json[])
+            return (revision = parsed["revision"], fields = [(f["name"], f["value"]) for f in parsed["fields"]])
+        end
+        Q.select_model!(c, "ReceptorBased/receptor_source_c")
+        check_message(c, "Receptor + Source (c) selection")
+        GUI["bump_receptor"] = bump_fields()
+        Q.load_simulation_save!(c, "2026-11-26_13-00-00_Reference_S1.json")
+        check_message(c, "Load Reference S1")
+        GUI["bump_loaded"] = bump_fields()
+        Q.start_cut_and_run!(c, "7.17", "2.43", "[\"3\", \"0.5\", \"0\", \"0\"]")
+        check_message(c, "Cut and run with changed Bump fields")
+        GUI["bump_status"] = c.bindings.cut_run_status[]
+        Q.stop_cut_and_run!(c)
+        started = time()
+        while c.cut_run.running
+            time() - started < 300 || error("Cut and run did not stop.")
+            sleep(0.2)
+        end
+        GUI["bump_stopped"] = c.bindings.notice[]
+        GUI["bump_errors"] = Tuple{String, Bool}[]
+        for texts in ("[\"4\", \"-1\", \"0\", \"0\"]", "[\"0\", \"0\", \"0\", \"0\"]",
+                      "[\"4\", \"x\", \"0\", \"0\"]", "[\"4\", \"1\"]")
+            Q.start_cut_and_run!(c, "7.17", "2.43", texts)
+            push!(GUI["bump_errors"], (c.bindings.message[], c.cut_run.running))
+        end
+        Q.select_model!(c, "GiererMeinhardt/source")
+        check_message(c, "Source selection")
+        GUI["bump_source"] = bump_fields()
     catch error
         GUI["error"] = sprint(showerror, error, catch_backtrace())
     finally
@@ -281,6 +314,21 @@ end
         (0.5, 0.5, 1.0, 1.0),
         (0.02, 0.02, 1.0, 1.0),
     ]
+
+    receptor = GUI["bump_receptor"]
+    @test receptor.fields == [("u", "4"), ("v", "1"), ("w", "0"), ("sd", "0")]
+    @test GUI["bump_loaded"].fields == receptor.fields
+    @test GUI["bump_loaded"].revision > receptor.revision
+    @test GUI["bump_source"].fields == [("u", "4"), ("v", "0"), ("sd", "0")]
+    @test GUI["bump_source"].revision > GUI["bump_loaded"].revision
+    @test occursin("bump u 3, v 0.5)", GUI["bump_status"])
+    @test GUI["bump_stopped"] == "Cut and run stopped"
+    messages = first.(GUI["bump_errors"])
+    @test !any(last.(GUI["bump_errors"]))
+    @test occursin("The bump height of v must be a finite number ≥ 0", messages[1])
+    @test occursin("At least one bump height must be positive", messages[2])
+    @test occursin("Bump v: 'x' is not a number", messages[3])
+    @test occursin("2 Bump fields for the 4 variables", messages[4])
 
     catalog = Q.JSON.parse(Q.model_catalog_json(Q.RD.MODEL_REGISTRY))
     profile_sets = Dict(entry["key"] => entry["profileSets"] for family in catalog for entry in family["models"])
